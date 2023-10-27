@@ -3,9 +3,7 @@ import torch.nn as nn
 from typing import List, Tuple, Optional
 
 
-def dln_model(
-    layers: List[int], in_ch: int = 1, in_dim: int = 28, num_class: int = 10
-) -> nn.Sequential:
+def dln_model(layers: List[int], in_ch: int = 1, in_dim: int = 28, num_class: int = 10) -> nn.Sequential:
     model_layers = []
     model_layers.append(nn.Flatten())
     in_dim = in_ch * in_dim**2
@@ -32,9 +30,7 @@ def dln_conv_model(
 
     for n_channels, kernel_size, stride, padding, slope in convolutions:
         model_layers += [
-            nn.Conv2d(
-                prev_channels, n_channels, kernel_size, stride=stride, padding=padding
-            ),
+            nn.Conv2d(prev_channels, n_channels, kernel_size, stride=stride, padding=padding),
         ]
 
         prev_channels = n_channels
@@ -88,9 +84,7 @@ def conv_model(
 
     for n_channels, kernel_size, stride, padding, slope in convolutions:
         layers += [
-            nn.Conv2d(
-                prev_channels, n_channels, kernel_size, stride=stride, padding=padding
-            ),
+            nn.Conv2d(prev_channels, n_channels, kernel_size, stride=stride, padding=padding),
         ]
 
         if slope == 0.0:
@@ -118,9 +112,7 @@ def conv_model(
     return nn.Sequential(*layers)
 
 
-def get_network(
-    name: str, dataset: str = "mnist", weight_path: str = "", device: str = "cpu"
-) -> nn.Sequential:
+def get_network(name: str, dataset: str = "mnist", weight_path: str = "", device: str = "cpu") -> nn.Sequential:
     """Get network with specific architecture in eval mode.
 
     Args:
@@ -143,9 +135,7 @@ def get_network(
     if name == "fc_base":  # DLN
         model = dln_model(layers=[50, 50, 50], in_ch=in_ch, in_dim=in_dim, num_class=10)
     elif name == "fc_1":  # RELU
-        model = fc_model(
-            activations=[(0.0, 50)], in_ch=in_ch, in_dim=in_dim, num_class=10
-        )
+        model = fc_model(activations=[(0.0, 50)], in_ch=in_ch, in_dim=in_dim, num_class=10)
     elif name == "fc_2":
         model = fc_model(
             activations=[(0.0, 100), (0.0, 100)],
@@ -257,7 +247,7 @@ def get_network(
             in_dim=in_dim,
             num_class=10,
         )
-    ### Hidden networks            
+    ### Hidden networks
     else:
         assert False, f"Invalid network name: {name}"
 

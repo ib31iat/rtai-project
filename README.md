@@ -1,7 +1,4 @@
 # RIAI 2023 Course Project
-
-
-
 ## Folder structure
 In the directory `code`, you can find 3 files and one folder:
 - The file `networks.py` contains the fully-connected and convolutional neural network architectures used in this project.
