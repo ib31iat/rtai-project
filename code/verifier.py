@@ -4,13 +4,14 @@ import torch
 from networks import get_network
 from utils.loading import parse_spec
 
-DEVICE = "cpu"
+from box import certify_sample
 
+DEVICE = "cpu"
 
 def analyze(
     net: torch.nn.Module, inputs: torch.Tensor, eps: float, true_label: int
 ) -> bool:
-    return 0
+    return certify_sample(net, inputs, true_label, eps)
 
 
 def main():
