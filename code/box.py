@@ -4,11 +4,13 @@ import torch.nn as nn
 class AbstractBox:
     # TODO: adapt for back sub
 
-    def __init__(self, lb: torch.Tensor, ub: torch.Tensor):
+    def __init__(self, lb: torch.Tensor, ub: torch.Tensor, lb_abstract=None, ub_abstract=None):
         assert lb.shape == ub.shape
         assert (lb > ub).sum() == 0
         self.lb = lb
         self.ub = ub
+        self.lb_abstract = lb_abstract
+        self.ub_abstract = ub_abstract
 
     @staticmethod
     def construct_initial_box(x: torch.Tensor, eps: float) -> 'AbstractBox':
@@ -32,7 +34,7 @@ class AbstractBox:
         eps_out = eps@fc.weight.abs().t()
         lb = center_out - eps_out
         ub = center_out + eps_out
-        return AbstractBox(lb, ub)
+        return AbstractBox(lb, ub, fc.weight, fc.weight)
 
     def propagate_relu(self, relu: nn.ReLU) -> 'AbstractBox':
         lb = relu(self.lb)
@@ -65,22 +67,28 @@ class AbstractBox:
 
 def certify_sample(model, x, y, eps) -> bool:
     box = propagate_sample(model, x, eps)
-    return box.check_postcondition(y)
+    back_substitution(model, box)
+    return box[-1].check_postcondition(y)
 
 def propagate_sample(model, x, eps) -> AbstractBox:
-    box = AbstractBox.construct_initial_box(x, eps)
+    box = [] # to store intermediate boxes for back substitution
+    box.append(AbstractBox.construct_initial_box(x, eps))
     for layer in model:
-        print(layer)
         if isinstance(layer, nn.Linear):
-            box = box.propagate_linear(layer)
+            box.append(box[-1].propagate_linear(layer))
         elif isinstance(layer, nn.ReLU):
-            box = box.propagate_relu(layer)
+            box.append(box[-1].propagate_relu(layer))
         elif isinstance(layer, nn.Flatten):
-            box = box.propagate_flatten(layer)
+            box.append(box[-1].propagate_flatten(layer))
         elif isinstance(layer, nn.LeakyReLU):
-            box = box.propagate_leaky_relu(layer)
+            box.append(box[-1].propagate_leaky_relu(layer))
         elif isinstance(layer, nn.Conv2d):
-            box = box.propagate_conv2d(layer)
+            box.append(box[-1].propagate_conv2d(layer))
         else:
             raise NotImplementedError(f'Unsupported layer type: {type(layer)}')
     return box
+
+def back_substitution(model, box):
+    for layer in reversed(model):
+        # TODO: Add together to have some kind of abstract form and then multiply with the initial level (to get better bounds)
+        break
