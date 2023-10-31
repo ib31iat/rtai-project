@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 class AbstractBox:
+    # TODO: adapt for back sub
 
     def __init__(self, lb: torch.Tensor, ub: torch.Tensor):
         assert lb.shape == ub.shape
@@ -45,7 +46,7 @@ class AbstractBox:
         return AbstractBox(lb, ub)
 
     def propagate_flatten(self, flatten: nn.Flatten) -> 'AbstractBox':
-        # TODO: Check if that is really correct, I think that should be corrects
+        # TODO: Check if that is really correct, I think that should be correct
         lb = flatten(self.lb)
         ub = flatten(self.ub)
         return AbstractBox(lb, ub)
@@ -69,6 +70,7 @@ def certify_sample(model, x, y, eps) -> bool:
 def propagate_sample(model, x, eps) -> AbstractBox:
     box = AbstractBox.construct_initial_box(x, eps)
     for layer in model:
+        print(layer)
         if isinstance(layer, nn.Linear):
             box = box.propagate_linear(layer)
         elif isinstance(layer, nn.ReLU):
