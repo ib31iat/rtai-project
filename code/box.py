@@ -45,7 +45,7 @@ class AbstractBox:
         return AbstractBox(lb, ub)
 
     def propagate_flatten(self, flatten: nn.Flatten) -> 'AbstractBox':
-        # TODO: Check if that is really correct, I suspect there is something wrong here
+        # TODO: Check if that is really correct, I think that should be corrects
         lb = flatten(self.lb)
         ub = flatten(self.ub)
         return AbstractBox(lb, ub)
