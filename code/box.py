@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from modules import Normalize, View
 
 class AbstractBox:
 
@@ -20,18 +19,8 @@ class AbstractBox:
 
         return AbstractBox(lb, ub)
 
-    def propagate_normalize(self, normalize: Normalize) -> 'AbstractBox':
-        # Follows from the rules in the lecture.
-        lb = normalize(self.lb)
-        ub = normalize(self.ub)
-        return AbstractBox(lb, ub)
-
-    def propagate_view(self, view: View) -> 'AbstractBox':
-        lb = view(self.lb)
-        ub = view(self.ub)
-        return AbstractBox(lb, ub)
-
     def propagate_linear(self, fc: nn.Linear) -> 'AbstractBox':
+        # TODO: Something is wrong here, fc_6 for example results in a shape problem in center@fc.weight.t()
         assert self.lb.shape == self.ub.shape
         center = (self.lb + self.ub) / 2
         eps = (self.ub - self.lb) / 2
@@ -45,16 +34,25 @@ class AbstractBox:
         return AbstractBox(lb, ub)
 
     def propagate_relu(self, relu: nn.ReLU) -> 'AbstractBox':
-        # Follows from the rules in the lecture.
+        lb = relu(self.lb)
+        ub = relu(self.ub)
+        return AbstractBox(lb, ub)
+
+    def propagate_leaky_relu(self, relu: nn.LeakyReLU) -> 'AbstractBox':
+        # TODO: Implement leaky ReLU
         lb = relu(self.lb)
         ub = relu(self.ub)
         return AbstractBox(lb, ub)
 
     def propagate_flatten(self, flatten: nn.Flatten) -> 'AbstractBox':
-        # TODO: check if that is really correct, I suspect there is something wrong here
+        # TODO: Check if that is really correct, I suspect there is something wrong here
         lb = flatten(self.lb)
         ub = flatten(self.ub)
         return AbstractBox(lb, ub)
+
+    def propagate_conv2d(self, conv: nn.Conv2d):
+         # TODO: Implement Conv layer
+        return AbstractBox(self.lb, self.ub)
 
     def check_postcondition(self, y) -> bool:
         target = y
@@ -71,16 +69,16 @@ def certify_sample(model, x, y, eps) -> bool:
 def propagate_sample(model, x, eps) -> AbstractBox:
     box = AbstractBox.construct_initial_box(x, eps)
     for layer in model:
-        if isinstance(layer, Normalize):
-            box = box.propagate_normalize(layer)
-        elif isinstance(layer, View):
-            box = box.propagate_view(layer)
-        elif isinstance(layer, nn.Linear):
+        if isinstance(layer, nn.Linear):
             box = box.propagate_linear(layer)
         elif isinstance(layer, nn.ReLU):
             box = box.propagate_relu(layer)
         elif isinstance(layer, nn.Flatten):
             box = box.propagate_flatten(layer)
+        elif isinstance(layer, nn.LeakyReLU):
+            box = box.propagate_leaky_relu(layer)
+        elif isinstance(layer, nn.Conv2d):
+            box = box.propagate_conv2d(layer)
         else:
             raise NotImplementedError(f'Unsupported layer type: {type(layer)}')
     return box
