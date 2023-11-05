@@ -6,7 +6,7 @@ from torch.autograd.functional import jacobian
 from torch.nn.functional import relu
 import torch.nn as nn
 
-from box import AbstractBox
+from Box import Box
 from utils.attach_shapes import attach_shapes
 
 
@@ -23,15 +23,15 @@ class LinearBound:
 
 class DeepPoly:
     def __init__(self, x: torch.Tensor, eps: float):
-        self.initial_box = AbstractBox.construct_initial_box(x, eps)
+        self.initial_box = Box.construct_initial_box(x, eps)
         # a list of Boxes; each element stores the concrete bounds for one layer
-        self.boxes: List[AbstractBox] = []
+        self.boxes: List[Box] = []
         # a list of LinearBounds; each element stores the linear bounds for one layer
         self.linear_bounds: List[LinearBound] = []
         # If the bounds are stored as above, then every propagate method
         # should append a box and a linear bound to the lists above.
 
-    def backsubstitute(self, layer_number: int) -> AbstractBox:
+    def backsubstitute(self, layer_number: int) -> Box:
         """
         Performs backsubstitution to compute bounds for a given layer.
 
@@ -60,7 +60,7 @@ class DeepPoly:
         lb = lb + lower_bias
         ub = ub + upper_bias
 
-        return AbstractBox(lb, ub)
+        return Box(lb, ub)
 
     def propagate_linear(self, linear: nn.Linear):
         linear_bound = linear.weight
@@ -104,7 +104,7 @@ def certify_sample(model, x, y, eps) -> bool:
     return box.check_postcondition(y)
 
 
-def propagate_sample(model, x, eps) -> AbstractBox:
+def propagate_sample(model, x, eps) -> Box:
     # TODO: Implement
     dp = DeepPoly(x, eps)
     for layer in model:
