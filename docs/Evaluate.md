@@ -5,3 +5,6 @@ The script then outputs whether all tests where successful or not. If not, it ou
 ## Invocation examples:
 - `python3 code/evaluate.py --net fc_base`
 - `python3 code/evaluate.py --net fc_base fc_1`
+
+## Requirements
+In addition to the to requirements of the project, the package `tqdm` needs to be installed. This package provides a progress bar.
