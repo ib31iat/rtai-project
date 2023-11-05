@@ -1,5 +1,6 @@
 import argparse
 import os
+from tqdm import tqdm
 
 from verifier import main as verifier
 
@@ -44,8 +45,12 @@ def main():
 
     # Check supplied nets
     failures = []
-    for net in args.net:
-        for spec in os.listdir("test_cases/{}".format(net)):
+    pbar = tqdm(args.net)
+    for net in pbar:
+        pbar.set_description("{}".format(net))
+        pbar_inner = tqdm(os.listdir("test_cases/{}".format(net)), leave=False)
+        for spec in pbar_inner:
+            pbar_inner.set_description("{}".format(spec[:-4]))
             result = verifier(net, "test_cases/{}/{}".format(net, spec))
             gt = ground_truth[net][spec]
             if result != gt:
