@@ -38,7 +38,6 @@ class DeepPoly:
         Args:
             layer_number: index of the layer for which to compute bounds
         """
-        # compute linear bound wrt network input
         linb = self.linear_bounds[layer_number]
         lower_weight, upper_weight, lower_bias, upper_bias = linb.get_params()
 
@@ -53,9 +52,9 @@ class DeepPoly:
             upper_weight = relu(upper_weight) @ prev_linb.upper_weight - relu(-upper_weight) @ prev_linb.lower_weight
 
         # Insert the initial boxes into the linear bounds
-        initial_lb, initial_ub = self.initial_box.lb, self.initial_box.ub
-        lb = relu(lower_weight) @ initial_lb - relu(-lower_weight) @ initial_ub
-        ub = relu(upper_weight) @ initial_ub - relu(-upper_weight) @ initial_lb
+        ilb, iub = self.initial_box.lb, self.initial_box.ub
+        lb = relu(lower_weight) @ ilb - relu(-lower_weight) @ iub
+        ub = relu(upper_weight) @ iub - relu(-upper_weight) @ ilb
 
         lb = lb + lower_bias
         ub = ub + upper_bias
@@ -90,8 +89,6 @@ class DeepPoly:
     def propagate_leaky_relu(self, leaky_relu: nn.LeakyReLU):
         pass  # TODO
 
-    # TODO: Write methods to propagate through different modules
-
 
 def certify_sample(model, x, y, eps) -> bool:
     for param in model.parameters():
@@ -102,19 +99,18 @@ def certify_sample(model, x, y, eps) -> bool:
 
 
 def propagate_sample(model, x, eps) -> Box:
-    # TODO: Implement
     dp = DeepPoly(x, eps)
     for layer in model:
         if isinstance(layer, nn.Linear):
             dp.propagate_linear(layer)
-        elif isinstance(layer, nn.ReLU):
-            dp.propagate_relu(layer)
-        elif isinstance(layer, nn.Flatten):
-            continue
-        elif isinstance(layer, nn.LeakyReLU):
-            dp.propagate_leaky_relu(layer)
         elif isinstance(layer, nn.Conv2d):
             dp.propagate_conv(layer)
+        elif isinstance(layer, nn.Flatten):
+            continue
+        elif isinstance(layer, nn.ReLU):
+            dp.propagate_relu(layer)
+        elif isinstance(layer, nn.LeakyReLU):
+            dp.propagate_leaky_relu(layer)
         else:
             raise NotImplementedError(f"Unsupported layer type: {type(layer)}")
     return dp.boxes[-1]

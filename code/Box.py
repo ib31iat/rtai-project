@@ -20,10 +20,7 @@ class Box:
     @staticmethod
     def construct_initial_box(x: torch.Tensor, eps: float) -> "Box":
         x = x.flatten()
-        lb = x - eps
-        lb.clamp_(min=0, max=1)
-
-        ub = x + eps
-        ub.clamp_(min=0, max=1)
+        lb = (x - eps).clamp_(min=0, max=1)
+        ub = (x + eps).clamp_(min=0, max=1)
 
         return Box(lb, ub)
