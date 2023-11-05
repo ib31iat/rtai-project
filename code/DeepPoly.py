@@ -63,10 +63,10 @@ class DeepPoly:
         return Box(lb, ub)
 
     def propagate_linear(self, linear: nn.Linear):
-        linear_bound = linear.weight
-        bias = linear.bias
+        W = linear.weight
+        b = linear.bias
         # Lower and upper linear bounds are identical for linear layer
-        linear_bound = LinearBound(linear_bound, linear_bound, bias, bias)
+        linear_bound = LinearBound(W, W, b, b)
         self.linear_bounds.append(linear_bound)
 
         box = self.backsubstitute(-1)
@@ -74,13 +74,10 @@ class DeepPoly:
 
     def propagate_conv(self, conv: nn.Conv2d):
         x = torch.rand(conv.input_shape)
-        W = jacobian(conv, x)
-        W = W.reshape(conv.out_features, conv.in_features)
-        if conv.bias is not None:
-            # Conv2d saves bias as a tensor of shape (out_channels,)
-            b = conv.bias.repeat_interleave(int(conv.out_features / conv.out_channels))
-        else:
-            b = None
+        J = jacobian(conv, x)
+        W = J.reshape(conv.out_features, conv.in_features)
+        # Conv2d saves bias as a tensor of shape (out_channels,)
+        b = conv.bias.repeat_interleave(int(conv.out_features / conv.out_channels)) if conv.bias is not None else None
         linear_bound = LinearBound(W, W, b, b)
         self.linear_bounds.append(linear_bound)
 
