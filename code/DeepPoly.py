@@ -84,7 +84,69 @@ class DeepPoly:
         self.boxes.append(box)
 
     def propagate_relu(self, relu: nn.ReLU):
-        pass  # TODO
+        """
+        Case 1: ub < 0 -> linear bounds = 0 (= lb = ub)
+        Case 2: lb > 0 -> linear bounds = x_{i-1} (lb = lb_{i-1}, ub = ub_{i-1})
+        Case 3: mixed
+            - lambda (slope) = ub_{i-1} / (ub_{i-1} - lb_{i-1})
+            - a) u <= -l -> Relaxation 1: linear_lb = 0, linear_ub = lambda * (x_{i-1}-lb_{i-1}) (lb = 0, ub = ub_{i-1})
+            - b) u >  -l -> Relaxation 2: linear_lb = x_{i-1}, linear_ub = lambda * (x_{i-1}-lb_{i-1}) (lb = lb_{i-1}, ub = ub_{i-1})
+
+        Args:
+            relu:
+        """
+        # case_1, case_2, case_3a, case_3b
+        lower_bound = torch.stack(
+            [
+                torch.zeros(self.linear_bounds[-1].lower_weight.shape[0]),
+                torch.ones(self.linear_bounds[-1].lower_weight.shape[0]),
+                torch.zeros(self.linear_bounds[-1].lower_weight.shape[0]),
+                torch.ones(self.linear_bounds[-1].lower_weight.shape[0]),
+            ],
+            dim=1,
+        )
+
+        bound = self.boxes[-1].ub / (self.boxes[-1].ub - self.boxes[-1].lb)
+        upper_bound = torch.stack(
+            [
+                torch.zeros(self.linear_bounds[-1].upper_weight.shape[0]),
+                torch.ones(self.linear_bounds[-1].upper_weight.shape[0]),
+                bound.clone().detach(),
+                bound.clone().detach(),
+            ],
+            dim=1,
+        )
+        bias = -bound * self.boxes[-1].lb
+        lower_bias = torch.zeros(self.linear_bounds[-1].lower_bias.shape[0], 4)
+        upper_bias = torch.cat(
+            [
+                torch.zeros(self.linear_bounds[-1].lower_bias.shape[0], 2),
+                bias.clone().detach().reshape(bias.shape[0], 1),
+                bias.clone().detach().reshape(bias.shape[0], 1),
+            ],
+            dim=1,
+        )
+
+        mask = []
+        for i in range(self.boxes[-1].lb.shape[0]):
+            if self.boxes[-1].ub[i] < 0:
+                mask.append([True, False, False, False])
+            elif self.boxes[-1].lb[i] > 0:
+                mask.append([False, True, False, False])
+            elif self.boxes[-1].ub[i] <= -self.boxes[-1].lb[i]:
+                mask.append([False, False, True, False])
+            else:
+                mask.append([False, False, False, True])
+
+        mask = torch.tensor(mask)
+
+        linear_bound = LinearBound(
+            torch.diag(lower_bound[mask]), torch.diag(upper_bound[mask]), lower_bias[mask], upper_bias[mask]
+        )
+        self.linear_bounds.append(linear_bound)
+
+        box = self.backsubstitute(-1)
+        self.boxes.append(box)
 
     def propagate_leaky_relu(self, leaky_relu: nn.LeakyReLU):
         pass  # TODO
