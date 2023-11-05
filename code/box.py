@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 
-class AbstractBox:
+class Box:
     def __init__(self, lb: torch.Tensor, ub: torch.Tensor):
         assert lb.shape == ub.shape
         assert (lb > ub).sum() == 0
@@ -18,7 +18,7 @@ class AbstractBox:
         return True
 
     @staticmethod
-    def construct_initial_box(x: torch.Tensor, eps: float) -> "AbstractBox":
+    def construct_initial_box(x: torch.Tensor, eps: float) -> "Box":
         x = x.flatten()
         lb = x - eps
         lb.clamp_(min=0, max=1)
@@ -26,4 +26,4 @@ class AbstractBox:
         ub = x + eps
         ub.clamp_(min=0, max=1)
 
-        return AbstractBox(lb, ub)
+        return Box(lb, ub)
