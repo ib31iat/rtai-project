@@ -1,7 +1,6 @@
 # RTAI 2023 Course Project
 ## Steps
-- Transformer from exercise
-- Back substitution (for more precision)
+- ReLU
 - Leaky ReLU
 - Slope (alpha) optmization
 
