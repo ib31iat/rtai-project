@@ -1,6 +1,6 @@
 # RTAI 2023 Course Project
 ## Steps
-- ReLU (hint: diagonal matrix)
+- ReLU
 - Leaky ReLU
 - Slope (alpha) optmization
 
