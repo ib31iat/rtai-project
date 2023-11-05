@@ -31,12 +31,3 @@ def attach_shapes(model, input_size):
     model(x)
     for h in hooks:
         h.remove()
-
-
-# from networks import get_network
-
-# net = get_network("conv_4", "cifar10")
-# shapes = attach_shapes(net, (1, 3, 32, 32))
-# for module in net.modules():
-#     if type(module) != nn.Sequential:
-#         print(module.input_shape, module.output_shape, module.in_features, module.out_features)
