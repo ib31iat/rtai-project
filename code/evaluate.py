@@ -28,7 +28,21 @@ def main():
             "conv_4",
         ],
         nargs="+",  # to validate mulitple nets
-        required=True,
+        default=[
+            "fc_base",
+            "fc_1",
+            "fc_2",
+            "fc_3",
+            "fc_4",
+            "fc_5",
+            "fc_6",
+            "fc_7",
+            "conv_base",
+            "conv_1",
+            "conv_2",
+            "conv_3",
+            "conv_4",
+        ],  # if none specified, check all nets
         help="Neural network architecture which is supposed to be verified.",
     )
     args = parser.parse_args()
