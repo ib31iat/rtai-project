@@ -95,7 +95,9 @@ class DeepPoly:
         Args:
             relu:
         """
-        # NOTE: could use leaky relu function also for relu
+        # NOTE: could use leaky relu function also for relu. Note that the current leaky_relu propagator always
+        # chooses relaxation 1.
+
         # case_1, case_2, case_3a, case_3b
         lower_bound = torch.stack(
             [
