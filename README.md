@@ -3,7 +3,7 @@
 - ReLU
 - Leaky ReLU
 - Slope (alpha) optimisation
-- Generate extra data (sample MNIST/CIFAR10 + repeated PNG attack for label)
+- Generate extra data (sample MNIST/CIFAR10 + repeated PGD attack for label)
 
 ## Folder structure
 In the directory `code`, you can find 3 files and one folder:
