@@ -1,7 +1,5 @@
 # RTAI 2023 Course Project
 ## Steps
-- ReLU
-- Leaky ReLU
 - Slope (alpha) optimisation
 - Generate extra data (sample MNIST/CIFAR10 + repeated PGD attack for label)
 
