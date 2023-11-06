@@ -160,7 +160,7 @@ class DeepPoly:
         non_negative = (prev_lb >= 0).float()
         U = L = torch.diag(non_negative)
         u = l = torch.zeros_like(prev_lb)
-        ## prev_ub <= 0 means weights and bias are all zeros, so nothing can leave U, L, u, l as is
+        ## prev_ub <= 0 means weights and bias are all zeros, so can leave U, L, u, l as is
 
         ## set params for crossing, i.e. prev_lb < 0 and prev_ub > 0
         crossing = torch.logical_and(prev_lb < 0, prev_ub > 0).float()
