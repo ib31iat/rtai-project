@@ -95,6 +95,7 @@ class DeepPoly:
         Args:
             relu:
         """
+        # NOTE: could use leaky relu function also for relu
         # case_1, case_2, case_3a, case_3b
         lower_bound = torch.stack(
             [
@@ -149,7 +150,36 @@ class DeepPoly:
         self.boxes.append(box)
 
     def propagate_leaky_relu(self, leaky_relu: nn.LeakyReLU):
-        pass  # TODO
+        negative_slope = leaky_relu.negative_slope
+        box = self.boxes[-1]
+        prev_lb, prev_ub = box.lb, box.ub
+
+        ## set params for prev_lb >= 0
+        non_negative = (prev_lb >= 0).float()
+        U = L = torch.diag(non_negative)
+        u = l = torch.zeros_like(prev_lb)
+        ## prev_ub <= 0 means weights and bias are all zeros, so nothing can leave U, L, u, l as is
+
+        ## set params for crossing, i.e. prev_lb < 0 and prev_ub > 0
+        crossing = torch.logical_and(prev_lb < 0, prev_ub > 0).float()
+        lmbda = (prev_ub - negative_slope * prev_lb) / (prev_ub - prev_lb)
+        b = (negative_slope - 1) * prev_lb / (prev_ub - prev_lb)
+        if negative_slope <= 1:
+            U += torch.diag(lmbda * crossing)  # unique
+            L += torch.diag(negative_slope * crossing)  # may be optimized; in the range [negative_slope, 1]
+            u += b * crossing
+            # l += torch.zeros_like(b)
+        else:
+            U += torch.diag(crossing)  # may be optimized; in the range [1, negative_slope]
+            L += torch.diag(lmbda * crossing)  # unique
+            # u += torch.zeros_like(b)
+            l += b * crossing
+
+        linear_bound = LinearBound(U, L, u, l)
+        self.linear_bounds.append(linear_bound)
+
+        box = self.backsubstitute(-1)
+        self.boxes.append(box)
 
 
 def certify_sample(model, x, y, eps) -> bool:
@@ -170,7 +200,8 @@ def propagate_sample(model, x, eps) -> Box:
         elif isinstance(layer, nn.Flatten):
             continue
         elif isinstance(layer, nn.ReLU):
-            dp.propagate_relu(layer)
+            # dp.propagate_relu(layer)
+            dp.propagate_leaky_relu(nn.LeakyReLU(0))
         elif isinstance(layer, nn.LeakyReLU):
             dp.propagate_leaky_relu(layer)
         else:
