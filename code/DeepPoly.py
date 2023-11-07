@@ -124,7 +124,7 @@ class DeepPoly:
             ],
             dim=1,
         )
-        lower_bias = torch.zeros(self.linear_bounds[-1].lower_bias.shape[0], 4)
+        lower_bias = torch.zeros(shape[0], 4)
         upper_bias = torch.stack(
             [
                 torch.zeros(shape[0]),
