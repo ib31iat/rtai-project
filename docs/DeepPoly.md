@@ -20,7 +20,7 @@ Let $\sigma$ denote the slope of a leaky ReLU on the negative axis. Assume the i
 #### Case 1: $\ \sigma\leq 1$
 If $\sigma\leq1$, there is a unique tightest linear upper bound in terms of the input $x$ on the outputs $y$ given by 
 $$
-y\leq \frac{u-\sigma l}{u-l}x+\frac{(\sigma-1)l}{u-l}.
+y\leq \frac{u-\sigma l}{u-l}x+\frac{(\sigma-1)ul}{u-l}.
 $$
 There are many possible linear lower bounds. They are given by
 $$
@@ -31,7 +31,7 @@ Note that the vanilla ReLU belongs to this case as ReLU is the same as leaky ReL
 #### Case 2: $\ \sigma\geq1$
 In this case, there is a unique tightest lower bound, given by
 $$
-y\geq \frac{u-\sigma l}{u-l}x+\frac{(\sigma-1)l}{u-l}.
+y\geq \frac{u-\sigma l}{u-l}x+\frac{(\sigma-1)ul}{u-l}.
 $$
 There are many possible linear upper bounds. They are given by
 $$
