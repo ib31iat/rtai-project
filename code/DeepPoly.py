@@ -168,8 +168,8 @@ class DeepPoly:
         prev_lb, prev_ub = box.lb, box.ub
 
         ## set bounds for prev_lb >= 0 and prev_ub <= 0
-        L_diag = (prev_lb >= 0) + slope * (prev_ub <= 0)
-        U_diag = (prev_lb >= 0) + slope * (prev_ub <= 0)
+        L_diag = (prev_lb >= 0).float() + slope * (prev_ub <= 0)
+        U_diag = (prev_lb >= 0).float() + slope * (prev_ub <= 0)
         l = torch.zeros_like(prev_lb)
         u = torch.zeros_like(prev_ub)
 
