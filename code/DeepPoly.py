@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import torch
 from torch.autograd.functional import jacobian
@@ -33,7 +33,8 @@ class DeepPoly:
         # should append a box and a linear bound to the lists above.
 
         self.model = model
-        self.alphas = self._initial_alphas()  # {layer_number: alpha}
+        # stores the slope parameters for the ReLU layers
+        self.alphas: Dict[int, torch.Tensor] = self._initial_alphas()  # {layer_number: alpha}
 
     def _initial_alphas(self) -> dict:
         """
@@ -140,7 +141,7 @@ class DeepPoly:
         # box = self.backsubstitute(-1)
         # self.boxes.append(box)
 
-    def propagate_sample(self) -> Box:
+    def propagate(self) -> Box:
         for i, layer in enumerate(self.model):
             if isinstance(layer, nn.Linear):
                 self.propagate_linear(layer)
@@ -167,7 +168,7 @@ def certify_sample(model, x, y, eps) -> bool:
     optimizer = torch.optim.Adam(params, lr=1)
     while True:
         optimizer.zero_grad()
-        box = dp.propagate_sample()
+        box = dp.propagate()
         lb, ub = box.lb, box.ub
         pairwise_difference = lb[y] - ub
         pairwise_difference[y] = 0
