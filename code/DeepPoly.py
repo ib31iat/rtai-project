@@ -104,6 +104,11 @@ class DeepPoly:
         prev_ub = prev_box.ub
         shape = (prev_lb.shape[0], 4)
 
+        prev_box = self.boxes[-1]
+        prev_lb = prev_box.lb
+        prev_ub = prev_box.ub
+        shape = (prev_lb.shape[0], 4)
+
         # case_1, case_2, case_3a, case_3b
         lower_bound = torch.stack(
             [
@@ -144,7 +149,7 @@ class DeepPoly:
             elif prev_ub[i] <= -prev_lb[i]:
                 mask.append([False, False, True, False])
             else:
-                mask.append([False, False, False, True])
+                mask.append([False, False, True, False])
 
         mask = torch.tensor(mask)
 
