@@ -3,9 +3,16 @@ import torch
 import torch.nn as nn
 
 
-def attach_shapes(model, input_size):
+def preprocess_net(model, input_size):
+    for param in model.parameters():
+        param.requires_grad = False
+    attach_attributes(model, input_size)
+
+
+def attach_attributes(model, input_size):
     """
-    Add input and output shape attributes to each module.
+    Adds in-/output shape, in-/out feature number attributes to each module
+    and adds negative_slope attribute to ReLU modules.
     """
 
     def register_hook(module):
@@ -21,6 +28,8 @@ def attach_shapes(model, input_size):
             module.output_shape = output_shape
             if not hasattr(module, "out_features"):
                 module.out_features = np.prod(output_shape[1:])  # [1:] to skip batch dimension
+            if isinstance(module, nn.ReLU):
+                module.negative_slope = 0.0
 
         if not isinstance(module, nn.Sequential) and not isinstance(module, nn.ModuleList):
             hooks.append(module.register_forward_hook(hook))

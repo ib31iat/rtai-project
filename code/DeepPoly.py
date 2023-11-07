@@ -1,13 +1,15 @@
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Union
 
+import numpy as np
 import torch
 from torch.autograd.functional import jacobian
 from torch.nn.functional import relu
 import torch.nn as nn
+from torch.special import expit
 
 from Box import Box
-from utils.attach_shapes import attach_shapes
+from utils.utils import preprocess_net
 
 
 @dataclass(frozen=True)
@@ -22,7 +24,7 @@ class LinearBound:
 
 
 class DeepPoly:
-    def __init__(self, x: torch.Tensor, eps: float):
+    def __init__(self, model: nn.Module, x: torch.Tensor, eps: float):
         self.initial_box = Box.construct_initial_box(x, eps)
         # a list of Boxes; each element stores the concrete bounds for one layer
         self.boxes: List[Box] = []
@@ -30,6 +32,22 @@ class DeepPoly:
         self.linear_bounds: List[LinearBound] = []
         # If the bounds are stored as above, then every propagate method
         # should append a box and a linear bound to the lists above.
+
+        self.model = model
+        self.alphas = self._initial_alphas()  # {layer_number: alpha}
+
+    def _initial_alphas(self) -> dict:
+        """
+        Initializes the alphas for the ReLU layers (to 0).
+        """
+        alphas = {}  # {layer_number: alpha}
+        for i, layer in enumerate(self.model):
+            if isinstance(layer, (nn.ReLU, nn.LeakyReLU)):
+                prev_layer = self.model[i - 1]
+                initial_alpha = torch.zeros(prev_layer.out_features)
+                alphas[i] = torch.nn.Parameter(initial_alpha)
+
+        return alphas
 
     def backsubstitute(self, layer_number: int) -> Box:
         """
@@ -162,14 +180,14 @@ class DeepPoly:
         # box = self.backsubstitute(-1)
         # self.boxes.append(box)
 
-    def propagate_leaky_relu(self, leaky_relu: nn.LeakyReLU):
-        slope = leaky_relu.negative_slope
+    def propagate_leaky_relu(self, relu: Union[nn.LeakyReLU, nn.ReLU], layer_number: int):
+        slope = relu.negative_slope
         box = self.boxes[-1]
         prev_lb, prev_ub = box.lb, box.ub
 
         ## set bounds for prev_lb >= 0 and prev_ub <= 0
-        L_diag = (prev_lb >= 0).float() + slope * (prev_ub <= 0)
-        U_diag = (prev_lb >= 0).float() + slope * (prev_ub <= 0)
+        L_diag = 1.0 * (prev_lb >= 0) + slope * (prev_ub <= 0)
+        U_diag = 1.0 * (prev_lb >= 0) + slope * (prev_ub <= 0)
         l = torch.zeros_like(prev_lb)
         u = torch.zeros_like(prev_ub)
 
@@ -177,13 +195,16 @@ class DeepPoly:
         crossing_selector = torch.logical_and(prev_lb < 0, prev_ub > 0).float()
         lmbda = (prev_ub - slope * prev_lb) / (prev_ub - prev_lb)
         b = (slope - 1) * prev_lb * prev_ub / (prev_ub - prev_lb)
+        alpha = self.alphas[layer_number]
         if slope <= 1:
+            bound_slope = expit(alpha) * (1 - slope) + slope  # slope needs to be in [slope, 1]
             U_diag += lmbda * crossing_selector  # tightest possible linear upper bound
-            L_diag += slope * crossing_selector  # may be optimized; in the range [slope, 1]
+            L_diag += bound_slope * crossing_selector
             u += b * crossing_selector
             # l += torch.zeros_like(b)
         else:
-            U_diag += crossing_selector  # may be optimized; in the range [1, slope]
+            bound_slope = expit(alpha) * (slope - 1) + 1  # slope needs to be in [1, slope]
+            U_diag += bound_slope * crossing_selector
             L_diag += lmbda * crossing_selector  # tightest possible linear lower bound
             # u += torch.zeros_like(b)
             l += b * crossing_selector
@@ -197,29 +218,44 @@ class DeepPoly:
         # box = self.backsubstitute(-1)
         # self.boxes.append(box)
 
+    def propagate_sample(self) -> Box:
+        for i, layer in enumerate(self.model):
+            if isinstance(layer, nn.Linear):
+                self.propagate_linear(layer)
+            elif isinstance(layer, nn.Conv2d):
+                self.propagate_conv(layer)
+            elif isinstance(layer, nn.Flatten):
+                continue
+            elif isinstance(layer, (nn.ReLU, nn.LeakyReLU)):
+                self.propagate_leaky_relu(layer, layer_number=i)
+            else:
+                raise NotImplementedError(f"Unsupported layer type: {type(layer)}")
+        return self.boxes[-1]
+
+    def flush(self):
+        self.boxes = []
+        self.linear_bounds = []
+
 
 def certify_sample(model, x, y, eps) -> bool:
-    for param in model.parameters():
-        param.requires_grad = False
-    attach_shapes(model, x.unsqueeze(0).shape)
-    box = propagate_sample(model, x, eps)
-    return box.check_postcondition(y)
+    preprocess_net(model, x.unsqueeze(0).shape)
 
+    dp = DeepPoly(model, x, eps)
+    params = dp.alphas.values()
+    optimizer = torch.optim.Adam(params, lr=1)
+    while True:
+        optimizer.zero_grad()
+        box = dp.propagate_sample()
+        lb, ub = box.lb, box.ub
+        pairwise_difference = lb[y] - ub
+        pairwise_difference[y] = 0
+        if torch.all(pairwise_difference >= 0):
+            return True
+        loss = relu(-pairwise_difference).sum()
+        loss.backward()
+        optimizer.step()
+        print(f"Loss: {loss.item()}")
 
-def propagate_sample(model, x, eps) -> Box:
-    dp = DeepPoly(x, eps)
-    for layer in model:
-        if isinstance(layer, nn.Linear):
-            dp.propagate_linear(layer)
-        elif isinstance(layer, nn.Conv2d):
-            dp.propagate_conv(layer)
-        elif isinstance(layer, nn.Flatten):
-            continue
-        elif isinstance(layer, nn.ReLU):
-            dp.propagate_relu(layer)
-            # dp.propagate_leaky_relu(nn.LeakyReLU(0))
-        elif isinstance(layer, nn.LeakyReLU):
-            dp.propagate_leaky_relu(layer)
-        else:
-            raise NotImplementedError(f"Unsupported layer type: {type(layer)}")
-    return dp.boxes[-1]
+        dp.flush()
+
+    return False
