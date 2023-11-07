@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import List, Optional, Union
 
-import numpy as np
 import torch
 from torch.autograd.functional import jacobian
 from torch.nn.functional import relu
@@ -38,7 +37,8 @@ class DeepPoly:
 
     def _initial_alphas(self) -> dict:
         """
-        Initializes the alphas for the ReLU layers (to 0).
+        Initializes the alphas for the ReLU layers (to 0). Note that the alphas aren't the actual slopes
+        (cf. propagate_leaky_relu)
         """
         alphas = {}  # {layer_number: alpha}
         for i, layer in enumerate(self.model):
@@ -101,79 +101,6 @@ class DeepPoly:
 
         box = self.backsubstitute(-1)
         self.boxes.append(box)
-
-    def propagate_relu(self, relu: nn.ReLU):
-        """
-        Case 1: ub < 0 -> linear bounds = 0 (= lb = ub)
-        Case 2: lb > 0 -> linear bounds = x_{i-1} (lb = lb_{i-1}, ub = ub_{i-1})
-        Case 3: mixed
-            - lambda (slope) = ub_{i-1} / (ub_{i-1} - lb_{i-1})
-            - a) u <= -l -> Relaxation 1: linear_lb = 0, linear_ub = lambda * (x_{i-1}-lb_{i-1}) (lb = 0, ub = ub_{i-1})
-            - b) u >  -l -> Relaxation 2: linear_lb = x_{i-1}, linear_ub = lambda * (x_{i-1}-lb_{i-1}) (lb = lb_{i-1}, ub = ub_{i-1})
-
-        Args:
-            relu:
-        """
-        # NOTE: could use leaky relu function also for relu. Note that the leaky_relu propagator chooses relaxation 1
-        # when the slope is not optimized.
-
-        prev_box = self.boxes[-1]
-        prev_lb = prev_box.lb
-        prev_ub = prev_box.ub
-        shape = (prev_lb.shape[0], 4)
-
-        # case_1, case_2, case_3a, case_3b
-        lower_bound = torch.stack(
-            [
-                torch.zeros(shape[0]),
-                torch.ones(shape[0]),
-                torch.zeros(shape[0]),
-                torch.ones(shape[0]),
-            ],
-            dim=1,
-        )
-
-        upper_bound = torch.stack(
-            [
-                torch.zeros(shape[0]),
-                torch.ones(shape[0]),
-                prev_ub / (prev_ub - prev_lb),
-                prev_ub / (prev_ub - prev_lb),
-            ],
-            dim=1,
-        )
-        lower_bias = torch.zeros(shape[0], 4)
-        upper_bias = torch.stack(
-            [
-                torch.zeros(shape[0]),
-                torch.zeros(shape[0]),
-                -prev_lb * prev_ub / (prev_ub - prev_lb),
-                -prev_lb * prev_ub / (prev_ub - prev_lb),
-            ],
-            dim=1,
-        )
-
-        mask = []
-        for i in range(shape[0]):
-            if prev_ub[i] < 0:
-                mask.append([True, False, False, False])
-            elif prev_lb[i] >= 0:
-                mask.append([False, True, False, False])
-            elif prev_ub[i] <= -prev_lb[i]:
-                mask.append([False, False, True, False])
-            else:
-                mask.append([False, False, False, True])
-
-        mask = torch.tensor(mask)
-
-        linear_bound = LinearBound(
-            torch.diag(lower_bound[mask]), torch.diag(upper_bound[mask]), lower_bias[mask], upper_bias[mask]
-        )
-        self.linear_bounds.append(linear_bound)
-
-        # no need to backsubstitute as concrete bounds are only used in relu propagation; relu is never followed by relu
-        # box = self.backsubstitute(-1)
-        # self.boxes.append(box)
 
     def propagate_leaky_relu(self, relu: Union[nn.LeakyReLU, nn.ReLU], layer_number: int):
         slope = relu.negative_slope
