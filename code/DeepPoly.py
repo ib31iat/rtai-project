@@ -98,48 +98,53 @@ class DeepPoly:
         # NOTE: could use leaky relu function also for relu. Note that the current leaky_relu propagator always
         # chooses relaxation 1.
 
+        prev_box = self.boxes[-1]
+        prev_lb = prev_box.lb
+        prev_ub = prev_box.ub
+        shape = (prev_lb.shape[0], 4)
+
+
         # case_1, case_2, case_3a, case_3b
         lower_bound = torch.stack(
             [
-                torch.zeros(self.linear_bounds[-1].lower_weight.shape[0]),
-                torch.ones(self.linear_bounds[-1].lower_weight.shape[0]),
-                torch.zeros(self.linear_bounds[-1].lower_weight.shape[0]),
-                torch.ones(self.linear_bounds[-1].lower_weight.shape[0]),
+                torch.zeros(shape[0]),
+                torch.ones(shape[0]),
+                torch.zeros(shape[0]),
+                torch.ones(shape[0]),
             ],
             dim=1,
         )
 
-        bound = self.boxes[-1].ub / (self.boxes[-1].ub - self.boxes[-1].lb)
         upper_bound = torch.stack(
             [
-                torch.zeros(self.linear_bounds[-1].upper_weight.shape[0]),
-                torch.ones(self.linear_bounds[-1].upper_weight.shape[0]),
-                bound.clone().detach(),
-                bound.clone().detach(),
+                torch.zeros(shape[0]),
+                torch.ones(shape[0]),
+                prev_ub / (prev_ub - prev_lb),
+                prev_ub / (prev_ub - prev_lb),
             ],
             dim=1,
         )
-        bias = -bound * self.boxes[-1].lb
         lower_bias = torch.zeros(self.linear_bounds[-1].lower_bias.shape[0], 4)
-        upper_bias = torch.cat(
+        upper_bias = torch.stack(
             [
-                torch.zeros(self.linear_bounds[-1].lower_bias.shape[0], 2),
-                bias.clone().detach().reshape(bias.shape[0], 1),
-                bias.clone().detach().reshape(bias.shape[0], 1),
+                torch.zeros(shape[0]),
+                torch.zeros(shape[0]),
+                -prev_lb * prev_ub / (prev_ub - prev_lb),
+                -prev_lb * prev_ub / (prev_ub - prev_lb),
             ],
             dim=1,
         )
 
         mask = []
-        for i in range(self.boxes[-1].lb.shape[0]):
-            if self.boxes[-1].ub[i] < 0:
+        for i in range(shape[0]):
+            if prev_ub < 0:
                 mask.append([True, False, False, False])
-            elif self.boxes[-1].lb[i] > 0:
+            elif prev_lb > 0:
                 mask.append([False, True, False, False])
-            elif self.boxes[-1].ub[i] <= -self.boxes[-1].lb[i]:
+            elif prev_ub <= - prev_lb:
                 mask.append([False, False, True, False])
             else:
-                mask.append([False, False, False, True])
+                mask.append([False, False, True, False])
 
         mask = torch.tensor(mask)
 
