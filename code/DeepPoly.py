@@ -149,7 +149,7 @@ class DeepPoly:
             elif prev_ub[i] <= -prev_lb[i]:
                 mask.append([False, False, True, False])
             else:
-                mask.append([False, False, True, False])
+                mask.append([False, False, False, True])
 
         mask = torch.tensor(mask)
 
