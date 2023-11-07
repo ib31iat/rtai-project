@@ -44,7 +44,8 @@ class DeepPoly:
         for prev_linb in reversed(self.linear_bounds[:layer_number]):
             if prev_linb.lower_bias is not None:
                 if lower_bias is None:
-                    lower_bias = upper_bias = torch.zeros(lower_weight.shape[0])
+                    lower_bias = torch.zeros(lower_weight.shape[0])
+                    upper_bias = torch.zeros(lower_weight.shape[0])
                 lower_bias += relu(lower_weight) @ prev_linb.lower_bias - relu(-lower_weight) @ prev_linb.upper_bias
                 upper_bias += relu(upper_weight) @ prev_linb.upper_bias - relu(-upper_weight) @ prev_linb.lower_bias
 
@@ -137,14 +138,14 @@ class DeepPoly:
 
         mask = []
         for i in range(shape[0]):
-            if prev_ub < 0:
+            if prev_ub[i] < 0:
                 mask.append([True, False, False, False])
-            elif prev_lb > 0:
+            elif prev_lb[i] >= 0:
                 mask.append([False, True, False, False])
-            elif prev_ub <= - prev_lb:
+            elif prev_ub[i] <= - prev_lb[i]:
                 mask.append([False, False, True, False])
             else:
-                mask.append([False, False, True, False])
+                mask.append([False, False, False, True])
 
         mask = torch.tensor(mask)
 
@@ -163,14 +164,16 @@ class DeepPoly:
 
         ## set params for prev_lb >= 0
         non_negative = (prev_lb >= 0).float()
-        U = L = torch.diag(non_negative)
-        u = l = torch.zeros_like(prev_lb)
+        U = torch.diag(non_negative)
+        L = torch.diag(non_negative)
+        u = torch.zeros_like(prev_lb)
+        l = torch.zeros_like(prev_lb)
         ## prev_ub <= 0 means weights and bias are all zeros, so can leave U, L, u, l as is
 
         ## set params for crossing, i.e. prev_lb < 0 and prev_ub > 0
         crossing = torch.logical_and(prev_lb < 0, prev_ub > 0).float()
         lmbda = (prev_ub - negative_slope * prev_lb) / (prev_ub - prev_lb)
-        b = (negative_slope - 1) * prev_lb / (prev_ub - prev_lb)
+        b = (negative_slope - 1) * prev_lb * prev_ub / (prev_ub - prev_lb)
         if negative_slope <= 1:
             U += torch.diag(lmbda * crossing)  # unique
             L += torch.diag(negative_slope * crossing)  # may be optimized; in the range [negative_slope, 1]
@@ -182,7 +185,7 @@ class DeepPoly:
             # u += torch.zeros_like(b)
             l += b * crossing
 
-        linear_bound = LinearBound(U, L, u, l)
+        linear_bound = LinearBound(L, U, l, u)
         self.linear_bounds.append(linear_bound)
 
         box = self.backsubstitute(-1)
@@ -207,8 +210,8 @@ def propagate_sample(model, x, eps) -> Box:
         elif isinstance(layer, nn.Flatten):
             continue
         elif isinstance(layer, nn.ReLU):
-            # dp.propagate_relu(layer)
-            dp.propagate_leaky_relu(nn.LeakyReLU(0))
+            dp.propagate_relu(layer)
+            # dp.propagate_leaky_relu(nn.LeakyReLU(0))
         elif isinstance(layer, nn.LeakyReLU):
             dp.propagate_leaky_relu(layer)
         else:
