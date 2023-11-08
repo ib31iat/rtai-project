@@ -1,14 +1,14 @@
 from dataclasses import dataclass
+from time import time
 from typing import Dict, List, Optional, Union
 
 import torch
 from torch.autograd.functional import jacobian
-from torch.nn.functional import relu
+from torch.nn.functional import relu, sigmoid
 import torch.nn as nn
-from torch.special import expit
 
 from Box import Box
-from utils.utils import preprocess_net
+from utils.utils import has_relu, preprocess_net
 
 
 @dataclass(frozen=True)
@@ -23,7 +23,7 @@ class LinearBound:
 
 
 class DeepPoly:
-    def __init__(self, model: nn.Module, x: torch.Tensor, eps: float):
+    def __init__(self, model: nn.Module, x: torch.Tensor, y: int, eps: float):
         self.initial_box = Box.construct_initial_box(x, eps)
         # a list of Boxes; each element stores the concrete bounds for one layer
         self.boxes: List[Box] = []
@@ -39,13 +39,14 @@ class DeepPoly:
     def _initial_alphas(self) -> dict:
         """
         Initializes the alphas for the ReLU layers (to 0). Note that the alphas aren't the actual slopes
-        (cf. propagate_leaky_relu)
+        (cf. propagate_relu)
         """
         alphas = {}  # {layer_number: alpha}
         for i, layer in enumerate(self.model):
             if isinstance(layer, (nn.ReLU, nn.LeakyReLU)):
-                prev_layer = self.model[i - 1]
-                initial_alpha = torch.zeros(prev_layer.out_features)
+                # initial_alpha = torch.zeros(layer.in_features)
+                # initial_alpha = torch.rand(layer.in_features) * 4 - 2  # uniform in [-2, 2]
+                initial_alpha = -2 * torch.ones(layer.in_features)
                 alphas[i] = torch.nn.Parameter(initial_alpha)
 
         return alphas
@@ -103,7 +104,7 @@ class DeepPoly:
         box = self.backsubstitute(-1)
         self.boxes.append(box)
 
-    def propagate_leaky_relu(self, relu: Union[nn.LeakyReLU, nn.ReLU], layer_number: int):
+    def propagate_relu(self, relu: Union[nn.LeakyReLU, nn.ReLU], layer_number: int):
         slope = relu.negative_slope
         box = self.boxes[-1]
         prev_lb, prev_ub = box.lb, box.ub
@@ -120,13 +121,13 @@ class DeepPoly:
         b = (slope - 1) * prev_lb * prev_ub / (prev_ub - prev_lb)
         alpha = self.alphas[layer_number]
         if slope <= 1:
-            bound_slope = expit(alpha) * (1 - slope) + slope  # slope needs to be in [slope, 1]
+            bound_slope = sigmoid(alpha) * (1 - slope) + slope  # slope needs to be in [slope, 1]
             U_diag += lmbda * crossing_selector  # tightest possible linear upper bound
             L_diag += bound_slope * crossing_selector
             u += b * crossing_selector
             # l += torch.zeros_like(b)
         else:
-            bound_slope = expit(alpha) * (slope - 1) + 1  # slope needs to be in [1, slope]
+            bound_slope = sigmoid(alpha) * (slope - 1) + 1  # slope needs to be in [1, slope]
             U_diag += bound_slope * crossing_selector
             L_diag += lmbda * crossing_selector  # tightest possible linear lower bound
             # u += torch.zeros_like(b)
@@ -150,7 +151,7 @@ class DeepPoly:
             elif isinstance(layer, nn.Flatten):
                 continue
             elif isinstance(layer, (nn.ReLU, nn.LeakyReLU)):
-                self.propagate_leaky_relu(layer, layer_number=i)
+                self.propagate_relu(layer, layer_number=i)
             else:
                 raise NotImplementedError(f"Unsupported layer type: {type(layer)}")
         return self.boxes[-1]
@@ -159,26 +160,33 @@ class DeepPoly:
         self.boxes = []
         self.linear_bounds = []
 
+    def optimize(self, y: int) -> bool:
+        params = self.alphas.values()
+        optimizer = torch.optim.Adam(params, lr=0.1)
+
+        start_time = time()
+        while time() - start_time < 60:  # limit verification to 60 seconds
+            optimizer.zero_grad()
+            box = self.propagate()
+            if box.check_postcondition(y):
+                return True
+            lb, ub = box.lb, box.ub
+            pairwise_difference = lb[y] - ub
+            pairwise_difference[y] = 0
+            loss = relu(-pairwise_difference).sum()
+            loss.backward()
+            optimizer.step()
+            self.flush()
+
+    def verify(self, y: int) -> bool:
+        if has_relu(self.model):
+            return self.optimize(y)
+        else:
+            box = self.propagate()
+            return box.check_postcondition(y)
+
 
 def certify_sample(model, x, y, eps) -> bool:
     preprocess_net(model, x.unsqueeze(0).shape)
-
-    dp = DeepPoly(model, x, eps)
-    params = dp.alphas.values()
-    optimizer = torch.optim.Adam(params, lr=1)
-    while True:
-        optimizer.zero_grad()
-        box = dp.propagate()
-        lb, ub = box.lb, box.ub
-        pairwise_difference = lb[y] - ub
-        pairwise_difference[y] = 0
-        if torch.all(pairwise_difference >= 0):
-            return True
-        loss = relu(-pairwise_difference).sum()
-        loss.backward()
-        optimizer.step()
-        print(f"Loss: {loss.item()}")
-
-        dp.flush()
-
-    return False
+    dp = DeepPoly(model, x, y, eps)
+    return dp.verify(y)
