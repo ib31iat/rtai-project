@@ -3,6 +3,13 @@ import torch
 import torch.nn as nn
 
 
+def has_relu(model):
+    for layer in model:
+        if isinstance(layer, (nn.ReLU, nn.LeakyReLU)):
+            return True
+    return False
+
+
 def preprocess_net(model, input_size):
     for param in model.parameters():
         param.requires_grad = False
