@@ -4,16 +4,19 @@ import torch.nn as nn
 
 
 def has_relu(model):
-    for layer in model:
-        if isinstance(layer, (nn.ReLU, nn.LeakyReLU)):
-            return True
-    return False
+    return any(isinstance(layer, (nn.ReLU, nn.LeakyReLU)) for layer in model)
 
 
-def preprocess_net(model, input_size):
-    for param in model.parameters():
-        param.requires_grad = False
-    attach_attributes(model, input_size)
+def get_C(y, n_class: int = 10):
+    I = [i for i in range(n_class) if i != y]
+    return torch.eye(n_class)[y].unsqueeze(dim=0) - torch.eye(n_class)[I]
+
+
+def fuse_last_layer(model, y):
+    last_layer = model[-1]
+    C = get_C(y)
+    last_layer.weight = nn.Parameter(C @ last_layer.weight)
+    last_layer.bias = nn.Parameter(C @ last_layer.bias)
 
 
 def attach_attributes(model, input_size):
@@ -47,3 +50,10 @@ def attach_attributes(model, input_size):
     model(x)
     for h in hooks:
         h.remove()
+
+
+def preprocess_net(model, input_size, y):
+    attach_attributes(model, input_size)
+    fuse_last_layer(model, y)
+    for param in model.parameters():
+        param.requires_grad = False

@@ -23,7 +23,7 @@ class LinearBound:
 
 
 class DeepPoly:
-    def __init__(self, model: nn.Module, x: torch.Tensor, y: int, eps: float):
+    def __init__(self, model: nn.Module, x: torch.Tensor, eps: float):
         self.model = model
         self.initial_box = Box.construct_initial_box(x, eps)
         # a list of Boxes; each element stores the concrete bounds for one layer
@@ -149,31 +149,31 @@ class DeepPoly:
 
     def optimize(self, y: int) -> bool:
         params = self.alphas.values()
-        optimizer = torch.optim.Adam(params, lr=0.1)
-
+        optimizer = torch.optim.Adam(params, lr=0.5)
         start_time = time()
-        while time() - start_time < 60:  # limit verification to 60 seconds
+        while time() - start_time < 60:  # TODO: limits verification to 15 seconds
             optimizer.zero_grad()
             box = self.propagate()
-            if box.check_postcondition(y):
+            if box.check_postcondition():
                 return True
-            lb, ub = box.lb, box.ub
-            pairwise_difference = lb[y] - ub
-            pairwise_difference[y] = 0
-            loss = relu(-pairwise_difference).sum()
+            lb = box.lb
+            loss = relu(-lb).sum()
+            # print(f"Loss: {loss.item()}")
             loss.backward()
             optimizer.step()
             self.flush()
+
+        return False
 
     def verify(self, y: int) -> bool:
         if has_relu(self.model):
             return self.optimize(y)
         else:
             box = self.propagate()
-            return box.check_postcondition(y)
+            return box.check_postcondition()
 
 
 def certify_sample(model, x, y, eps) -> bool:
-    preprocess_net(model, x.unsqueeze(0).shape)
-    dp = DeepPoly(model, x, y, eps)
+    preprocess_net(model, x.unsqueeze(0).shape, y)
+    dp = DeepPoly(model, x, eps)
     return dp.verify(y)
