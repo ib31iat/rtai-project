@@ -112,26 +112,25 @@ class DeepPoly:
         ## set bounds for prev_lb >= 0 and prev_ub <= 0
         L_diag = 1.0 * (prev_lb >= 0) + slope * (prev_ub <= 0)
         U_diag = 1.0 * (prev_lb >= 0) + slope * (prev_ub <= 0)
-        l = torch.zeros_like(prev_lb)
-        u = torch.zeros_like(prev_ub)
 
         ## set bounds for crossing, i.e. prev_lb < 0 < prev_ub
-        crossing_selector = torch.logical_and(prev_lb < 0, prev_ub > 0).float()
         lmbda = (prev_ub - slope * prev_lb) / (prev_ub - prev_lb)
         b = (slope - 1) * prev_lb * prev_ub / (prev_ub - prev_lb)
         alpha = self.alphas[layer_number]
+        crossing_selector = (prev_lb < 0) & (prev_ub > 0)
         if slope <= 1:
             bound_slope = sigmoid(alpha) * (1 - slope) + slope  # slope needs to be in [slope, 1]
-            U_diag += lmbda * crossing_selector  # tightest possible linear upper bound
+            assert torch.all((slope <= bound_slope) & (bound_slope <= 1))
             L_diag += bound_slope * crossing_selector
-            u += b * crossing_selector
-            # l += torch.zeros_like(b)
+            U_diag += lmbda * crossing_selector  # tightest possible linear upper bound
+            l = torch.zeros_like(b)
+            u = b * crossing_selector
         else:
             bound_slope = sigmoid(alpha) * (slope - 1) + 1  # slope needs to be in [1, slope]
-            U_diag += bound_slope * crossing_selector
             L_diag += lmbda * crossing_selector  # tightest possible linear lower bound
-            # u += torch.zeros_like(b)
-            l += b * crossing_selector
+            U_diag += bound_slope * crossing_selector
+            l = b * crossing_selector
+            u = torch.zeros_like(b)
 
         L = torch.diag(L_diag)
         U = torch.diag(U_diag)
@@ -139,8 +138,6 @@ class DeepPoly:
         self.linear_bounds.append(linear_bound)
 
         # no need to backsubstitute as concrete bounds are only used in relu propagation; relu is never followed by relu
-        # box = self.backsubstitute(-1)
-        # self.boxes.append(box)
 
     def propagate(self) -> Box:
         for i, layer in enumerate(self.model):
