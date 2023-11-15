@@ -72,7 +72,7 @@ def main():
 
     # Print
     if len(failures) == 0:
-        print("All test cases are correct. Tested nets: {}".format(*args.net, sep=","))
+        print(f"All test cases are correct. Tested nets: {', '.join(args.net)}")
     else:
         print("There were some errors:")
         for f in failures:
