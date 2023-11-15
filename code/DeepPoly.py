@@ -24,6 +24,7 @@ class LinearBound:
 
 class DeepPoly:
     def __init__(self, model: nn.Module, x: torch.Tensor, y: int, eps: float):
+        self.model = model
         self.initial_box = Box.construct_initial_box(x, eps)
         # a list of Boxes; each element stores the concrete bounds for one layer
         self.boxes: List[Box] = []
@@ -32,22 +33,18 @@ class DeepPoly:
         # If the bounds are stored as above, then every propagate method
         # should append a box and a linear bound to the lists above.
 
-        self.model = model
         # stores the slope parameters for the ReLU layers
         self.alphas: Dict[int, torch.Tensor] = self._initial_alphas()  # {layer_number: alpha}
 
     def _initial_alphas(self) -> dict:
         """
-        Initializes the alphas for the ReLU layers (to 0). Note that the alphas aren't the actual slopes
-        (cf. propagate_relu)
+        Initializes the alphas for the ReLU layers.
         """
         alphas = {}  # {layer_number: alpha}
         for i, layer in enumerate(self.model):
             if isinstance(layer, (nn.ReLU, nn.LeakyReLU)):
-                # initial_alpha = torch.zeros(layer.in_features)
-                # initial_alpha = torch.rand(layer.in_features) * 4 - 2  # uniform in [-2, 2]
-                initial_alpha = -2 * torch.ones(layer.in_features)
-                alphas[i] = torch.nn.Parameter(initial_alpha)
+                initial_alpha = torch.rand(layer.in_features) * 2 - 1  # uniform in [-1, 1]
+                alphas[i] = nn.Parameter(initial_alpha)
 
         return alphas
 
