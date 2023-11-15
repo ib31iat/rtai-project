@@ -48,7 +48,7 @@ class DeepPoly:
 
         return alphas
 
-    def backsubstitute(self, layer_number: int) -> Box:
+    def backsubstitute(self, layer_number: int = -1) -> Box:
         """
         Performs backsubstitution to compute bounds for a given layer.
 
@@ -59,23 +59,16 @@ class DeepPoly:
         lower_weight, upper_weight, lower_bias, upper_bias = linb.get_params()
 
         for prev_linb in reversed(self.linear_bounds[:layer_number]):
-            if prev_linb.lower_bias is not None:
-                if lower_bias is None:
-                    lower_bias = torch.zeros(lower_weight.shape[0])
-                    upper_bias = torch.zeros(upper_weight.shape[0])
-                lower_bias += relu(lower_weight) @ prev_linb.lower_bias - relu(-lower_weight) @ prev_linb.upper_bias
-                upper_bias += relu(upper_weight) @ prev_linb.upper_bias - relu(-upper_weight) @ prev_linb.lower_bias
+            lower_bias += relu(lower_weight) @ prev_linb.lower_bias - relu(-lower_weight) @ prev_linb.upper_bias
+            upper_bias += relu(upper_weight) @ prev_linb.upper_bias - relu(-upper_weight) @ prev_linb.lower_bias
 
             lower_weight = relu(lower_weight) @ prev_linb.lower_weight - relu(-lower_weight) @ prev_linb.upper_weight
             upper_weight = relu(upper_weight) @ prev_linb.upper_weight - relu(-upper_weight) @ prev_linb.lower_weight
 
         # Insert the initial boxes into the linear bounds
         ilb, iub = self.initial_box.lb, self.initial_box.ub
-        lb = relu(lower_weight) @ ilb - relu(-lower_weight) @ iub
-        ub = relu(upper_weight) @ iub - relu(-upper_weight) @ ilb
-        if lower_bias is not None:
-            lb += lower_bias
-            ub += upper_bias
+        lb = relu(lower_weight) @ ilb - relu(-lower_weight) @ iub + lower_bias
+        ub = relu(upper_weight) @ iub - relu(-upper_weight) @ ilb + upper_bias
 
         return Box(lb, ub)
 
@@ -85,7 +78,7 @@ class DeepPoly:
         linear_bound = LinearBound(W, W, b, b)
         self.linear_bounds.append(linear_bound)
 
-        box = self.backsubstitute(-1)
+        box = self.backsubstitute()
         self.boxes.append(box)
 
     def propagate_conv(self, conv: nn.Conv2d):
@@ -98,7 +91,7 @@ class DeepPoly:
         linear_bound = LinearBound(W, W, b, b)
         self.linear_bounds.append(linear_bound)
 
-        box = self.backsubstitute(-1)
+        box = self.backsubstitute()
         self.boxes.append(box)
 
     def propagate_relu(self, relu: Union[nn.LeakyReLU, nn.ReLU], layer_number: int):
