@@ -3,9 +3,26 @@ import torch
 import torch.nn as nn
 
 
-def attach_shapes(model, input_size):
+def has_relu(model):
+    return any(isinstance(layer, (nn.ReLU, nn.LeakyReLU)) for layer in model)
+
+
+def get_C(y, n_class: int = 10):
+    I = [i for i in range(n_class) if i != y]
+    return torch.eye(n_class)[y].unsqueeze(dim=0) - torch.eye(n_class)[I]
+
+
+def fuse_last_layer(model, y):
+    last_layer = model[-1]
+    C = get_C(y)
+    last_layer.weight = nn.Parameter(C @ last_layer.weight)
+    last_layer.bias = nn.Parameter(C @ last_layer.bias)
+
+
+def attach_attributes(model, input_size):
     """
-    Add input and output shape attributes to each module.
+    Adds in-/output shape, in-/out feature number attributes to each module
+    and adds negative_slope attribute to ReLU modules.
     """
 
     def register_hook(module):
@@ -21,6 +38,8 @@ def attach_shapes(model, input_size):
             module.output_shape = output_shape
             if not hasattr(module, "out_features"):
                 module.out_features = np.prod(output_shape[1:])  # [1:] to skip batch dimension
+            if isinstance(module, nn.ReLU):
+                module.negative_slope = 0.0
 
         if not isinstance(module, nn.Sequential) and not isinstance(module, nn.ModuleList):
             hooks.append(module.register_forward_hook(hook))
@@ -31,3 +50,10 @@ def attach_shapes(model, input_size):
     model(x)
     for h in hooks:
         h.remove()
+
+
+def preprocess_net(model, input_size, y):
+    attach_attributes(model, input_size)
+    fuse_last_layer(model, y)
+    for param in model.parameters():
+        param.requires_grad = False

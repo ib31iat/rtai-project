@@ -1,13 +1,14 @@
 from dataclasses import dataclass
-from typing import List, Optional
+from time import time
+from typing import Dict, List, Optional, Union
 
 import torch
 from torch.autograd.functional import jacobian
-from torch.nn.functional import relu
+from torch.nn.functional import relu, sigmoid
 import torch.nn as nn
 
 from Box import Box
-from utils.attach_shapes import attach_shapes
+from utils.utils import has_relu, preprocess_net
 
 
 @dataclass(frozen=True)
@@ -22,7 +23,8 @@ class LinearBound:
 
 
 class DeepPoly:
-    def __init__(self, x: torch.Tensor, eps: float):
+    def __init__(self, model: nn.Module, x: torch.Tensor, eps: float):
+        self.model = model
         self.initial_box = Box.construct_initial_box(x, eps)
         # a list of Boxes; each element stores the concrete bounds for one layer
         self.boxes: List[Box] = []
@@ -31,7 +33,22 @@ class DeepPoly:
         # If the bounds are stored as above, then every propagate method
         # should append a box and a linear bound to the lists above.
 
-    def backsubstitute(self, layer_number: int) -> Box:
+        # stores the slope parameters for the ReLU layers
+        self.alphas: Dict[int, torch.Tensor] = self._initial_alphas()  # {layer_number: alpha}
+
+    def _initial_alphas(self) -> dict:
+        """
+        Initializes the alphas for the ReLU layers.
+        """
+        alphas = {}  # {layer_number: alpha}
+        for i, layer in enumerate(self.model):
+            if isinstance(layer, (nn.ReLU, nn.LeakyReLU)):
+                initial_alpha = torch.rand(layer.in_features) * 2 - 1  # uniform in [-1, 1]
+                alphas[i] = nn.Parameter(initial_alpha)
+
+        return alphas
+
+    def backsubstitute(self, layer_number: int = -1) -> Box:
         """
         Performs backsubstitution to compute bounds for a given layer.
 
@@ -42,23 +59,16 @@ class DeepPoly:
         lower_weight, upper_weight, lower_bias, upper_bias = linb.get_params()
 
         for prev_linb in reversed(self.linear_bounds[:layer_number]):
-            if prev_linb.lower_bias is not None:
-                if lower_bias is None:
-                    lower_bias = torch.zeros(lower_weight.shape[0])
-                    upper_bias = torch.zeros(upper_weight.shape[0])
-                lower_bias += relu(lower_weight) @ prev_linb.lower_bias - relu(-lower_weight) @ prev_linb.upper_bias
-                upper_bias += relu(upper_weight) @ prev_linb.upper_bias - relu(-upper_weight) @ prev_linb.lower_bias
+            lower_bias += relu(lower_weight) @ prev_linb.lower_bias - relu(-lower_weight) @ prev_linb.upper_bias
+            upper_bias += relu(upper_weight) @ prev_linb.upper_bias - relu(-upper_weight) @ prev_linb.lower_bias
 
             lower_weight = relu(lower_weight) @ prev_linb.lower_weight - relu(-lower_weight) @ prev_linb.upper_weight
             upper_weight = relu(upper_weight) @ prev_linb.upper_weight - relu(-upper_weight) @ prev_linb.lower_weight
 
         # Insert the initial boxes into the linear bounds
         ilb, iub = self.initial_box.lb, self.initial_box.ub
-        lb = relu(lower_weight) @ ilb - relu(-lower_weight) @ iub
-        ub = relu(upper_weight) @ iub - relu(-upper_weight) @ ilb
-        if lower_bias is not None:
-            lb += lower_bias
-            ub += upper_bias
+        lb = relu(lower_weight) @ ilb - relu(-lower_weight) @ iub + lower_bias
+        ub = relu(upper_weight) @ iub - relu(-upper_weight) @ ilb + upper_bias
 
         return Box(lb, ub)
 
@@ -68,7 +78,7 @@ class DeepPoly:
         linear_bound = LinearBound(W, W, b, b)
         self.linear_bounds.append(linear_bound)
 
-        box = self.backsubstitute(-1)
+        box = self.backsubstitute()
         self.boxes.append(box)
 
     def propagate_conv(self, conv: nn.Conv2d):
@@ -81,107 +91,36 @@ class DeepPoly:
         linear_bound = LinearBound(W, W, b, b)
         self.linear_bounds.append(linear_bound)
 
-        box = self.backsubstitute(-1)
+        box = self.backsubstitute()
         self.boxes.append(box)
 
-    def propagate_relu(self, relu: nn.ReLU):
-        """
-        Case 1: ub < 0 -> linear bounds = 0 (= lb = ub)
-        Case 2: lb > 0 -> linear bounds = x_{i-1} (lb = lb_{i-1}, ub = ub_{i-1})
-        Case 3: mixed
-            - lambda (slope) = ub_{i-1} / (ub_{i-1} - lb_{i-1})
-            - a) u <= -l -> Relaxation 1: linear_lb = 0, linear_ub = lambda * (x_{i-1}-lb_{i-1}) (lb = 0, ub = ub_{i-1})
-            - b) u >  -l -> Relaxation 2: linear_lb = x_{i-1}, linear_ub = lambda * (x_{i-1}-lb_{i-1}) (lb = lb_{i-1}, ub = ub_{i-1})
-
-        Args:
-            relu:
-        """
-        # NOTE: could use leaky relu function also for relu. Note that the leaky_relu propagator chooses relaxation 1
-        # when the slope is not optimized.
-
-        prev_box = self.boxes[-1]
-        prev_lb = prev_box.lb
-        prev_ub = prev_box.ub
-        shape = (prev_lb.shape[0], 4)
-
-        # case_1, case_2, case_3a, case_3b
-        lower_bound = torch.stack(
-            [
-                torch.zeros(shape[0]),
-                torch.ones(shape[0]),
-                torch.zeros(shape[0]),
-                torch.ones(shape[0]),
-            ],
-            dim=1,
-        )
-
-        upper_bound = torch.stack(
-            [
-                torch.zeros(shape[0]),
-                torch.ones(shape[0]),
-                prev_ub / (prev_ub - prev_lb),
-                prev_ub / (prev_ub - prev_lb),
-            ],
-            dim=1,
-        )
-        lower_bias = torch.zeros(shape[0], 4)
-        upper_bias = torch.stack(
-            [
-                torch.zeros(shape[0]),
-                torch.zeros(shape[0]),
-                -prev_lb * prev_ub / (prev_ub - prev_lb),
-                -prev_lb * prev_ub / (prev_ub - prev_lb),
-            ],
-            dim=1,
-        )
-
-        mask = []
-        for i in range(shape[0]):
-            if prev_ub[i] < 0:
-                mask.append([True, False, False, False])
-            elif prev_lb[i] >= 0:
-                mask.append([False, True, False, False])
-            elif prev_ub[i] <= -prev_lb[i]:
-                mask.append([False, False, True, False])
-            else:
-                mask.append([False, False, False, True])
-
-        mask = torch.tensor(mask)
-
-        linear_bound = LinearBound(
-            torch.diag(lower_bound[mask]), torch.diag(upper_bound[mask]), lower_bias[mask], upper_bias[mask]
-        )
-        self.linear_bounds.append(linear_bound)
-
-        # no need to backsubstitute as concrete bounds are only used in relu propagation; relu is never followed by relu
-        # box = self.backsubstitute(-1)
-        # self.boxes.append(box)
-
-    def propagate_leaky_relu(self, leaky_relu: nn.LeakyReLU):
-        slope = leaky_relu.negative_slope
+    def propagate_relu(self, relu: Union[nn.LeakyReLU, nn.ReLU], layer_number: int):
+        slope = relu.negative_slope
         box = self.boxes[-1]
         prev_lb, prev_ub = box.lb, box.ub
 
         ## set bounds for prev_lb >= 0 and prev_ub <= 0
-        L_diag = (prev_lb >= 0).float() + slope * (prev_ub <= 0)
-        U_diag = (prev_lb >= 0).float() + slope * (prev_ub <= 0)
-        l = torch.zeros_like(prev_lb)
-        u = torch.zeros_like(prev_ub)
+        L_diag = 1.0 * (prev_lb >= 0) + slope * (prev_ub <= 0)
+        U_diag = 1.0 * (prev_lb >= 0) + slope * (prev_ub <= 0)
 
         ## set bounds for crossing, i.e. prev_lb < 0 < prev_ub
-        crossing_selector = torch.logical_and(prev_lb < 0, prev_ub > 0).float()
         lmbda = (prev_ub - slope * prev_lb) / (prev_ub - prev_lb)
         b = (slope - 1) * prev_lb * prev_ub / (prev_ub - prev_lb)
+        alpha = self.alphas[layer_number]
+        crossing_selector = (prev_lb < 0) & (prev_ub > 0)
         if slope <= 1:
+            bound_slope = sigmoid(alpha) * (1 - slope) + slope  # slope needs to be in [slope, 1]
+            assert torch.all((slope <= bound_slope) & (bound_slope <= 1))
+            L_diag += bound_slope * crossing_selector
             U_diag += lmbda * crossing_selector  # tightest possible linear upper bound
-            L_diag += slope * crossing_selector  # may be optimized; in the range [slope, 1]
-            u += b * crossing_selector
-            # l += torch.zeros_like(b)
+            l = torch.zeros_like(b)
+            u = b * crossing_selector
         else:
-            U_diag += crossing_selector  # may be optimized; in the range [1, slope]
+            bound_slope = sigmoid(alpha) * (slope - 1) + 1  # slope needs to be in [1, slope]
             L_diag += lmbda * crossing_selector  # tightest possible linear lower bound
-            # u += torch.zeros_like(b)
-            l += b * crossing_selector
+            U_diag += bound_slope * crossing_selector
+            l = b * crossing_selector
+            u = torch.zeros_like(b)
 
         L = torch.diag(L_diag)
         U = torch.diag(U_diag)
@@ -189,32 +128,52 @@ class DeepPoly:
         self.linear_bounds.append(linear_bound)
 
         # no need to backsubstitute as concrete bounds are only used in relu propagation; relu is never followed by relu
-        # box = self.backsubstitute(-1)
-        # self.boxes.append(box)
+
+    def propagate(self) -> Box:
+        for i, layer in enumerate(self.model):
+            if isinstance(layer, nn.Linear):
+                self.propagate_linear(layer)
+            elif isinstance(layer, nn.Conv2d):
+                self.propagate_conv(layer)
+            elif isinstance(layer, nn.Flatten):
+                continue
+            elif isinstance(layer, (nn.ReLU, nn.LeakyReLU)):
+                self.propagate_relu(layer, layer_number=i)
+            else:
+                raise NotImplementedError(f"Unsupported layer type: {type(layer)}")
+        return self.boxes[-1]
+
+    def flush(self):
+        self.boxes = []
+        self.linear_bounds = []
+
+    def optimize(self, y: int) -> bool:
+        params = self.alphas.values()
+        optimizer = torch.optim.Adam(params, lr=0.5)
+        start_time = time()
+        while time() - start_time < 60:  # TODO: limits verification to 15 seconds
+            optimizer.zero_grad()
+            box = self.propagate()
+            if box.check_postcondition():
+                return True
+            lb = box.lb
+            loss = relu(-lb).sum()
+            # print(f"Loss: {loss.item()}")
+            loss.backward()
+            optimizer.step()
+            self.flush()
+
+        return False
+
+    def verify(self, y: int) -> bool:
+        if has_relu(self.model):
+            return self.optimize(y)
+        else:
+            box = self.propagate()
+            return box.check_postcondition()
 
 
 def certify_sample(model, x, y, eps) -> bool:
-    for param in model.parameters():
-        param.requires_grad = False
-    attach_shapes(model, x.unsqueeze(0).shape)
-    box = propagate_sample(model, x, eps)
-    return box.check_postcondition(y)
-
-
-def propagate_sample(model, x, eps) -> Box:
-    dp = DeepPoly(x, eps)
-    for layer in model:
-        if isinstance(layer, nn.Linear):
-            dp.propagate_linear(layer)
-        elif isinstance(layer, nn.Conv2d):
-            dp.propagate_conv(layer)
-        elif isinstance(layer, nn.Flatten):
-            continue
-        elif isinstance(layer, nn.ReLU):
-            dp.propagate_relu(layer)
-            # dp.propagate_leaky_relu(nn.LeakyReLU(0))
-        elif isinstance(layer, nn.LeakyReLU):
-            dp.propagate_leaky_relu(layer)
-        else:
-            raise NotImplementedError(f"Unsupported layer type: {type(layer)}")
-    return dp.boxes[-1]
+    preprocess_net(model, x.unsqueeze(0).shape, y)
+    dp = DeepPoly(model, x, eps)
+    return dp.verify(y)

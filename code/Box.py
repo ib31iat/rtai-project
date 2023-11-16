@@ -9,13 +9,8 @@ class Box:
         self.lb = lb
         self.ub = ub
 
-    def check_postcondition(self, y) -> bool:
-        target = y
-        target_lb = self.lb[target].item()
-        for i in range(self.ub.shape[-1]):
-            if i != target and self.ub[i] >= target_lb:
-                return False
-        return True
+    def check_postcondition(self) -> bool:
+        return (self.lb >= 0).all()
 
     @staticmethod
     def construct_initial_box(x: torch.Tensor, eps: float) -> "Box":
