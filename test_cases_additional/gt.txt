@@ -1,0 +1,50 @@
+fc_5,img9258_mnist_0.0181.txt,verified
+conv_base,img9784_mnist_0.2192.txt,not verified
+conv_2,img2385_mnist_0.2955.txt,not verified
+fc_4,img6872_mnist_0.1118.txt,not verified
+fc_3,img6132_mnist_0.1348.txt,verified
+fc_4,img1856_mnist_0.1795.txt,not verified
+conv_2,img4294_mnist_0.1688.txt,not verified
+conv_3,img658_cifar10_0.0487.txt,not verified
+fc_1,img4414_mnist_0.019.txt,verified
+fc_2,img1451_mnist_0.2669.txt,not verified
+fc_2,img5816_mnist_0.2221.txt,not verified
+fc_base,img7721_mnist_0.2601.txt,not verified
+conv_3,img6444_cifar10_0.0137.txt,verified
+fc_base,img7575_mnist_0.1906.txt,not verified
+fc_base,img1908_mnist_0.181.txt,not verified
+fc_4,img7624_mnist_0.2316.txt,not verified
+fc_6,img790_mnist_0.0359.txt,verified
+conv_3,img8973_cifar10_0.0687.txt,not verified
+fc_base,img1795_mnist_0.0945.txt,verified
+conv_4,img2059_mnist_0.1808.txt,verified
+fc_4,img2193_mnist_0.2549.txt,not verified
+conv_1,img4777_mnist_0.0089.txt,verified
+conv_2,img7225_mnist_0.2863.txt,not verified
+conv_3,img2139_cifar10_0.0648.txt,not verified
+fc_3,img9092_mnist_0.2067.txt,not verified
+conv_base,img4650_mnist_0.1118.txt,verified
+conv_2,img8648_mnist_0.0092.txt,verified
+conv_4,img31_mnist_0.0569.txt,verified
+fc_5,img1093_mnist_0.1481.txt,not verified
+fc_1,img9361_mnist_0.1772.txt,not verified
+fc_5,img3609_mnist_0.2965.txt,not verified
+fc_base,img3365_mnist_0.2535.txt,not verified
+fc_1,img3203_mnist_0.058.txt,verified
+fc_6,img2459_cifar10_0.1555.txt,not verified
+fc_4,img9969_mnist_0.0148.txt,verified
+fc_2,img4814_mnist_0.1104.txt,not verified
+fc_5,img2454_mnist_0.2511.txt,not verified
+fc_7,img8643_mnist_0.1206.txt,verified
+fc_7,img4903_mnist_0.061.txt,verified
+fc_5,img2854_mnist_0.1501.txt,not verified
+fc_2,img3434_mnist_0.0976.txt,verified
+conv_base,img1182_mnist_0.2007.txt,not verified
+fc_3,img2727_mnist_0.1732.txt,not verified
+conv_2,img5330_mnist_0.1818.txt,verified
+fc_1,img8432_mnist_0.1787.txt,not verified
+conv_2,img8042_mnist_0.1224.txt,verified
+fc_3,img8421_mnist_0.1048.txt,verified
+fc_base,img3686_mnist_0.1852.txt,not verified
+conv_2,img6958_mnist_0.1339.txt,verified
+fc_1,img5360_mnist_0.2078.txt,not verified
