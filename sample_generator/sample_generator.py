@@ -168,7 +168,7 @@ def generate_sample(net, mnist_dataset, cifar10_dataset):
 
     if result == "not verified":
         with open(f"{output_folder}/faile_idx.txt", "a") as file:
-            file.write(f"{image_file_name[:-4]}: {pgd_fail}, {faile_idx}\n")
+            file.write(f"{image_file_name[:-4]}, {net}: {pgd_fail}, {faile_idx}\n")
 
     return True
 
