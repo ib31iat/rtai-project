@@ -7,7 +7,7 @@ To increase the chance of finding an adversarial example, `pgd_iteration` many i
 - `dataset`: based on the chosen neural network
 - `image`: randomly sampled from the dataset
 - `k`: 1e4
-- `pgd_iterations`: 1e3
+- `pgd_iterations`: 1e2
 - `eps`: [0,0.3]
 - `eps_step`: 2.5 * (eps - 1e-6) / k
 - `number_of_samples`: 1 if not specified

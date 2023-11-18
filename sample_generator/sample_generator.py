@@ -130,7 +130,7 @@ def generate_sample(net, mnist_dataset, cifar10_dataset):
   image = image.unsqueeze(0)
   eps = round(rnd.uniform(0,0.3), 4)
   k = int(1e4)
-  pgd_iterations = int(1e3)
+  pgd_iterations = int(1e2)
   eps_step = 2.5 * (eps - 1e-6) / k
 
   model = get_network(net, dataset_name, f'models/{dataset_name}_{net}.pt').to('cpu')
