@@ -157,7 +157,8 @@ def generate_sample(net, mnist_dataset, cifar10_dataset):
 
   with open(ground_truth_file, 'a') as gt_file:
     gt_file.write(f'{net},{image_file_name},{result}\n')
-  if result == 'not verfied':  
+
+  if result == 'not verified':  
     with open(f'{output_folder}/faile_idx.txt', 'a') as file:
       file.write(f'{pgd_fail}, {faile_idx}\n')
 
