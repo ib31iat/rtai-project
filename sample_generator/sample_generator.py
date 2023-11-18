@@ -138,9 +138,9 @@ def generate_sample(net, mnist_dataset, cifar10_dataset):
 
   pgd_fail = 0
   for i in tqdm(range(pgd_iterations), leave=False):
+    pgd_fail = i
     faile_idx, result, adv_image = pgd(model, image, label=true_label, k=k, eps=eps, eps_step=eps_step, model_to_prob=model_to_prob)
     if result == 'not verified':
-      pgd_fail = i
       break
 
   image_file_name = f'img{image_idx}_{dataset_name}_{eps}.txt'
@@ -157,9 +157,9 @@ def generate_sample(net, mnist_dataset, cifar10_dataset):
 
   with open(ground_truth_file, 'a') as gt_file:
     gt_file.write(f'{net},{image_file_name},{result}\n')
-
-  with open(f'{output_folder}/faile_idx.txt', 'a') as file:
-    file.write(f'{pgd_fail}, {faile_idx}\n')
+  if result == 'not verfied':  
+    with open(f'{output_folder}/faile_idx.txt', 'a') as file:
+      file.write(f'{pgd_fail}, {faile_idx}\n')
 
 
 def main():
