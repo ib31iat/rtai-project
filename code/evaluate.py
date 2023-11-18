@@ -45,11 +45,21 @@ def main():
         ],  # if none specified, check all nets
         help="Neural network architecture which is supposed to be verified.",
     )
+    parser.add_argument(
+        "--additional",
+        action='store_true'
+    )
     args = parser.parse_args()
+
+    # Set the base folder
+    if args.additional:
+        base_path = "test_cases_additional"
+    else:
+        base_path = "test_cases"
 
     # Read ground truths
     ground_truth = {}  # {net: {spec: verified | not verified}}
-    with open("test_cases/gt.txt", "r") as ground_truth_file:
+    with open(f"{base_path}/gt.txt", "r") as ground_truth_file:
         for line in ground_truth_file:
             split_line = line.split(",")
             net = split_line[0]
@@ -61,14 +71,14 @@ def main():
     failures = []
     pbar = tqdm(args.net)
     for net in pbar:
-        pbar.set_description("{}".format(net))
-        pbar_inner = tqdm(os.listdir("test_cases/{}".format(net)), leave=False)
+        pbar.set_description(f"{net}")
+        pbar_inner = tqdm(os.listdir(f"{base_path}/{net}"), leave=False)
         for spec in pbar_inner:
-            pbar_inner.set_description("{}".format(spec[:-4]))
-            result = verifier(net, "test_cases/{}/{}".format(net, spec))
+            pbar_inner.set_description(f"{spec[:-4]}")
+            result = verifier(net, f"{base_path}/{net}/{spec}")
             gt = ground_truth[net][spec]
             if result != gt:
-                failures.append("net: {}, spec: {}. Was '{}' should  have been '{}'".format(net, spec, result, gt))
+                failures.append(f"net: {net}, spec: {spec}. Was '{result}' should  have been '{gt}'")
 
     # Print
     if len(failures) == 0:
@@ -76,7 +86,7 @@ def main():
     else:
         print("There were some errors:")
         for f in failures:
-            print("\t- {}".format(f))
+            print(f"\t- {f}")
 
 
 if __name__ == "__main__":
