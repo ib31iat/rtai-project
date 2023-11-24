@@ -30,7 +30,7 @@ fc_5,img1093_mnist_0.1481.txt,not verified
 fc_1,img9361_mnist_0.1772.txt,not verified
 fc_5,img3609_mnist_0.2965.txt,not verified
 fc_base,img3365_mnist_0.2535.txt,not verified
-fc_1,img3203_mnist_0.058.txt,verified
+fc_1,img3203_mnist_0.058.txt,not verified
 fc_6,img2459_cifar10_0.1555.txt,not verified
 fc_4,img9969_mnist_0.0148.txt,verified
 fc_2,img4814_mnist_0.1104.txt,not verified
