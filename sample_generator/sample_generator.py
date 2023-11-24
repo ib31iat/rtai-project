@@ -4,9 +4,10 @@ import os
 import sys
 from pathlib import Path
 
-from tqdm import tqdm
+from tqdm.autonotebook import tqdm
 import numpy as np
 import random as rnd
+import time
 
 import torch
 from torch import nn
@@ -14,6 +15,7 @@ from torchvision import datasets, transforms
 
 sys.path.insert(1, "code/")
 from networks import get_network
+from utils.loading import parse_spec
 
 
 def load_datasets():
@@ -129,7 +131,7 @@ def generate_sample(net, mnist_dataset, cifar10_dataset):
     image = image.unsqueeze(0)
     eps = round(rnd.uniform(0, 0.3), 4)
     k = int(1e4)
-    pgd_iterations = int(1e1)
+    pgd_iterations = int(1e2)
     eps_step = 2.5 * (eps - 1e-6) / k
 
     model = get_network(net, dataset_name, f"models/{dataset_name}_{net}.pt").to("cpu")
@@ -145,7 +147,7 @@ def generate_sample(net, mnist_dataset, cifar10_dataset):
     pgd_fail = 0
     for i in tqdm(range(pgd_iterations), leave=False):
         pgd_fail = i
-        faile_idx, result, _ = pgd(
+        fail_idx, result, _ = pgd(
             model, image, label=true_label, k=k, eps=eps, eps_step=eps_step, model_to_prob=model_to_prob
         )
         if result == "not verified":
@@ -167,10 +169,41 @@ def generate_sample(net, mnist_dataset, cifar10_dataset):
         gt_file.write(f"{net},{image_file_name},{result}\n")
 
     if result == "not verified":
-        with open(f"{output_folder}/faile_idx.txt", "a") as file:
-            file.write(f"{image_file_name[:-4]}, {net}: {pgd_fail}, {faile_idx}\n")
+        with open(f"{output_folder}/fail_idx.txt", "a") as file:
+            file.write(f"{image_file_name[:-4]}, {net}: {pgd_fail}, {fail_idx}\n")
 
     return True
+
+
+def test_sample(net, spec):
+    assert net is not None
+
+    true_label, dataset, image, eps = parse_spec(spec)
+    model = get_network(net, dataset, f"models/{dataset}_{net}.pt").to("cpu")
+    model_to_prob = nn.Sequential(model, nn.Softmax())
+    k = int(1e4)
+    eps_step = 2.5 * (eps - 1e-6) / k
+    pgd_iterations = int(1e6)
+    time_limit = 30 * 60  # in seconds
+
+    pgd_fail = 0
+    adverserial = False
+    start_time = time.time()
+    for i in tqdm(range(pgd_iterations), leave=False):
+        pgd_fail = i
+        fail_idx, result, _ = pgd(
+            model, image, label=true_label, k=k, eps=eps, eps_step=eps_step, model_to_prob=model_to_prob
+        )
+        if result == "not verified":
+            adverserial = True
+            break
+        if time.time() - start_time > time_limit:
+            break
+
+    if adverserial:
+        print(f"Found adversarial example after {pgd_fail+1} iterations of PGD at iteration {fail_idx} of FGSM.")
+    else:
+        print(f"Could not find an adversarial example after {time_limit} seconds.")
 
 
 def main():
@@ -205,18 +238,25 @@ def main():
         help="The number of samples that should be generated",
     )
 
+    parser.add_argument("--spec", type=str, default=None, help="Test case to find adversarial example for.")
+
     args = parser.parse_args()
 
     # Load the datasets
     mnist_dataset, cifar10_dataset = load_datasets()
 
-    # generate samples
-    for _ in tqdm(range(args.number_of_samples)):
-        successful = False
-        while not successful:
-            # Retry in case the selected model cannot classify the image correctly
-            # to still get the demanded number of samples.
-            successful = generate_sample(args.net, mnist_dataset, cifar10_dataset)
+    # Decide which case we are in
+    if args.spec is not None:
+        # Check if there is an adversarial example for a certain image
+        test_sample(args.net, args.spec)
+    else:
+        # generate samples
+        for _ in tqdm(range(args.number_of_samples)):
+            successful = False
+            while not successful:
+                # Retry in case the selected model cannot classify the image correctly
+                # to still get the demanded number of samples.
+                successful = generate_sample(args.net, mnist_dataset, cifar10_dataset)
 
 
 if __name__ == "__main__":
