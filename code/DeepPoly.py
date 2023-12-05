@@ -28,7 +28,7 @@ class DeepPoly:
         self.model = model
         self.initial_box = Box.construct_initial_box(x, eps)
         # stores the concrete bounds
-        self.boxes: List[Box] = []
+        self.prev_box: Box
         # stores the linear bounds
         self.linear_bounds: Dict[int, LinearBound] = {}  # {layer_number: linear_bound}
         # stores the slope parameters for the ReLU layers
@@ -83,7 +83,7 @@ class DeepPoly:
         lb = relu(lower_weight) @ ilb - relu(-lower_weight) @ iub + lower_bias
         ub = relu(upper_weight) @ iub - relu(-upper_weight) @ ilb + upper_bias
 
-        return Box(lb, ub)
+        self.prev_box = Box(lb, ub)
 
     def propagate_linear(self, linear: nn.Linear, layer_number: int):
         if layer_number not in self.linear_bounds.keys():  # only set bounds in first propagation
@@ -92,8 +92,7 @@ class DeepPoly:
             linear_bound = LinearBound(W, W, b, b)
             self.linear_bounds[layer_number] = linear_bound
 
-        box = self.backsubstitute(layer_number)
-        self.boxes.append(box)
+        self.backsubstitute(layer_number)
 
     def propagate_conv(self, conv: nn.Conv2d, layer_number: int):
         if layer_number not in self.linear_bounds.keys():  # only set bounds in first propagation
@@ -105,12 +104,11 @@ class DeepPoly:
             linear_bound = LinearBound(W, W, b, b)
             self.linear_bounds[layer_number] = linear_bound
 
-        box = self.backsubstitute(layer_number)
-        self.boxes.append(box)
+        self.backsubstitute(layer_number)
 
     def propagate_relu(self, relu: Union[nn.LeakyReLU, nn.ReLU], layer_number: int):
         slope = relu.negative_slope
-        box = self.boxes[-1]
+        box = self.prev_box
         prev_lb, prev_ub = box.lb, box.ub
 
         ## set bounds for prev_lb >= 0 and prev_ub <= 0
@@ -153,7 +151,7 @@ class DeepPoly:
                 self.propagate_relu(layer, layer_number=i)
             else:
                 raise NotImplementedError(f"Unsupported layer type: {type(layer)}")
-        return self.boxes[-1]
+        return self.prev_box
 
     def optimize(self, timeout: int = 5) -> bool:
         """
