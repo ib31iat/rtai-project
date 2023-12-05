@@ -166,7 +166,6 @@ class DeepPoly:
                 return True
             lb = box.lb
             loss = relu(-lb).sum()
-            # print(f"Loss: {loss.item()}")
             loss.backward()
             optimizer.step()
 
