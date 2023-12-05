@@ -155,11 +155,17 @@ class DeepPoly:
                 raise NotImplementedError(f"Unsupported layer type: {type(layer)}")
         return self.boxes[-1]
 
-    def optimize(self) -> bool:
+    def optimize(self, timeout: int = 5) -> bool:
+        """
+        Optimizes the slopes of the relu approximation
+
+        Args:
+            timeout: the time in minutes until the optimization it aborted and not verified is returned
+        """
         params = self.alphas.values()
         optimizer = torch.optim.Adam(params, lr=1)
         start_time = time()
-        while time() - start_time < 60:  # TODO: limits verification to 15 seconds
+        while time() - start_time < timeout * 60:
             optimizer.zero_grad()
             box = self.propagate()
             if box.check_postcondition():
