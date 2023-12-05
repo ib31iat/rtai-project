@@ -155,7 +155,7 @@ class DeepPoly:
                 raise NotImplementedError(f"Unsupported layer type: {type(layer)}")
         return self.boxes[-1]
 
-    def optimize(self, y: int) -> bool:
+    def optimize(self) -> bool:
         params = self.alphas.values()
         optimizer = torch.optim.Adam(params, lr=1)
         start_time = time()
@@ -171,9 +171,9 @@ class DeepPoly:
 
         return False
 
-    def verify(self, y: int) -> bool:
+    def verify(self) -> bool:
         if has_relu(self.model):
-            return self.optimize(y)
+            return self.optimize()
         else:
             box = self.propagate()
             return box.check_postcondition()
@@ -182,4 +182,4 @@ class DeepPoly:
 def certify_sample(model, x, y, eps) -> bool:
     preprocess_net(model, x.unsqueeze(0).shape, y)
     dp = DeepPoly(model, x, eps)
-    return dp.verify(y)
+    return dp.verify()
