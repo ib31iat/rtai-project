@@ -27,13 +27,10 @@ class DeepPoly:
     def __init__(self, model: nn.Module, x: torch.Tensor, eps: float):
         self.model = model
         self.initial_box = Box.construct_initial_box(x, eps)
-        # a list of Boxes; each element stores the concrete bounds for one layer
+        # stores the concrete bounds
         self.boxes: List[Box] = []
-        # a list of LinearBounds; each element stores the linear bounds for one layer
-        self.linear_bounds: List[LinearBound] = []
-        # If the bounds are stored as above, then every propagate method
-        # should append a box and a linear bound to the lists above.
-
+        # stores the linear bounds
+        self.linear_bounds: Dict[int, LinearBound] = {}  # {layer_number: linear_bound}
         # stores the slope parameters for the ReLU layers
         self.alphas: Dict[int, torch.Tensor] = self._initial_alphas()  # {layer_number: alpha}
 
@@ -49,7 +46,7 @@ class DeepPoly:
 
         return alphas
 
-    def backsubstitute(self, layer_number: int = -1) -> Box:
+    def backsubstitute(self, layer_number: int) -> Box:
         """
         Performs backsubstitution to compute bounds for a given layer.
 
@@ -59,7 +56,11 @@ class DeepPoly:
         linb = self.linear_bounds[layer_number]
         lower_weight, upper_weight, lower_bias, upper_bias = linb.get_params()
 
-        for prev_linb in reversed(self.linear_bounds[:layer_number]):
+        prev_linear_bounds = [
+            self.linear_bounds[i] for i in range(layer_number) if not isinstance(self.model[i], nn.Flatten)
+        ]
+
+        for prev_linb in reversed(prev_linear_bounds):
             lower_bias += relu(lower_weight) @ prev_linb.lower_bias - relu(-lower_weight) @ prev_linb.upper_bias
             upper_bias += relu(upper_weight) @ prev_linb.upper_bias - relu(-upper_weight) @ prev_linb.lower_bias
             if prev_linb.is_diag:
@@ -84,26 +85,27 @@ class DeepPoly:
 
         return Box(lb, ub)
 
-    def propagate_linear(self, linear: nn.Linear):
-        W = linear.weight
-        b = linear.bias
-        linear_bound = LinearBound(W, W, b, b)
-        self.linear_bounds.append(linear_bound)
+    def propagate_linear(self, linear: nn.Linear, layer_number: int):
+        if layer_number not in self.linear_bounds.keys():  # only set bounds in first propagation
+            W = linear.weight
+            b = linear.bias
+            linear_bound = LinearBound(W, W, b, b)
+            self.linear_bounds[layer_number] = linear_bound
 
-        box = self.backsubstitute()
+        box = self.backsubstitute(layer_number)
         self.boxes.append(box)
 
-    def propagate_conv(self, conv: nn.Conv2d):
-        x = torch.rand(conv.input_shape)
-        J = jacobian(conv, x)  # convenient to avoid building W manually, but loses exactness due to autodiff
-        W = J.reshape(conv.out_features, conv.in_features)
-        # Conv2d saves bias as a tensor of shape (out_channels,)
-        assert conv.out_features % conv.out_channels == 0
-        b = conv.bias.repeat_interleave(conv.out_features // conv.out_channels) if conv.bias is not None else None
-        linear_bound = LinearBound(W, W, b, b)
-        self.linear_bounds.append(linear_bound)
+    def propagate_conv(self, conv: nn.Conv2d, layer_number: int):
+        if layer_number not in self.linear_bounds.keys():  # only set bounds in first propagation
+            x = torch.rand(conv.input_shape)
+            J = jacobian(conv, x)  # convenient to avoid building W manually, but loses exactness due to autodiff
+            W = J.reshape(conv.out_features, conv.in_features)
+            # Conv2d saves bias as a tensor of shape (out_channels,)
+            b = conv.bias.repeat_interleave(conv.out_features // conv.out_channels) if conv.bias is not None else None
+            linear_bound = LinearBound(W, W, b, b)
+            self.linear_bounds[layer_number] = linear_bound
 
-        box = self.backsubstitute()
+        box = self.backsubstitute(layer_number)
         self.boxes.append(box)
 
     def propagate_relu(self, relu: Union[nn.LeakyReLU, nn.ReLU], layer_number: int):
@@ -135,15 +137,16 @@ class DeepPoly:
             u = torch.zeros_like(b)
 
         linear_bound = LinearBound(L_diag, U_diag, l, u, is_diag=True)
+        self.linear_bounds[layer_number] = linear_bound
 
         # no need to backsubstitute as concrete bounds are only used in relu propagation; relu is never followed by relu
 
     def propagate(self) -> Box:
         for i, layer in enumerate(self.model):
             if isinstance(layer, nn.Linear):
-                self.propagate_linear(layer)
+                self.propagate_linear(layer, layer_number=i)
             elif isinstance(layer, nn.Conv2d):
-                self.propagate_conv(layer)
+                self.propagate_conv(layer, layer_number=i)
             elif isinstance(layer, nn.Flatten):
                 continue
             elif isinstance(layer, (nn.ReLU, nn.LeakyReLU)):
@@ -151,10 +154,6 @@ class DeepPoly:
             else:
                 raise NotImplementedError(f"Unsupported layer type: {type(layer)}")
         return self.boxes[-1]
-
-    def flush(self):
-        self.boxes = []
-        self.linear_bounds = []
 
     def optimize(self, y: int) -> bool:
         params = self.alphas.values()
@@ -170,7 +169,6 @@ class DeepPoly:
             # print(f"Loss: {loss.item()}")
             loss.backward()
             optimizer.step()
-            self.flush()
 
         return False
 
