@@ -17,6 +17,7 @@ class LinearBound:
     upper_weight: torch.Tensor
     lower_bias: Optional[torch.Tensor] = None
     upper_bias: Optional[torch.Tensor] = None
+    is_diag: bool = False
 
     def get_params(self):
         return self.lower_weight.clone(), self.upper_weight.clone(), self.lower_bias.clone(), self.upper_bias.clone()
@@ -61,9 +62,20 @@ class DeepPoly:
         for prev_linb in reversed(self.linear_bounds[:layer_number]):
             lower_bias += relu(lower_weight) @ prev_linb.lower_bias - relu(-lower_weight) @ prev_linb.upper_bias
             upper_bias += relu(upper_weight) @ prev_linb.upper_bias - relu(-upper_weight) @ prev_linb.lower_bias
-
-            lower_weight = relu(lower_weight) @ prev_linb.lower_weight - relu(-lower_weight) @ prev_linb.upper_weight
-            upper_weight = relu(upper_weight) @ prev_linb.upper_weight - relu(-upper_weight) @ prev_linb.lower_weight
+            if prev_linb.is_diag:
+                lower_weight = (
+                    relu(lower_weight) * prev_linb.lower_weight - relu(-lower_weight) * prev_linb.upper_weight
+                )
+                upper_weight = (
+                    relu(upper_weight) * prev_linb.upper_weight - relu(-upper_weight) * prev_linb.lower_weight
+                )
+            else:
+                lower_weight = (
+                    relu(lower_weight) @ prev_linb.lower_weight - relu(-lower_weight) @ prev_linb.upper_weight
+                )
+                upper_weight = (
+                    relu(upper_weight) @ prev_linb.upper_weight - relu(-upper_weight) @ prev_linb.lower_weight
+                )
 
         # Insert the initial boxes into the linear bounds
         ilb, iub = self.initial_box.lb, self.initial_box.ub
@@ -122,10 +134,7 @@ class DeepPoly:
             l = b * crossing_selector
             u = torch.zeros_like(b)
 
-        L = torch.diag(L_diag)
-        U = torch.diag(U_diag)
-        linear_bound = LinearBound(L, U, l, u)
-        self.linear_bounds.append(linear_bound)
+        linear_bound = LinearBound(L_diag, U_diag, l, u, is_diag=True)
 
         # no need to backsubstitute as concrete bounds are only used in relu propagation; relu is never followed by relu
 
