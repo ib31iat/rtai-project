@@ -149,7 +149,7 @@ class DeepPoly:
 
     def optimize(self, y: int) -> bool:
         params = self.alphas.values()
-        optimizer = torch.optim.Adam(params, lr=0.5)
+        optimizer = torch.optim.Adam(params, lr=1)
         start_time = time()
         while time() - start_time < 60:  # TODO: limits verification to 15 seconds
             optimizer.zero_grad()
